@@ -59,9 +59,22 @@
     <div class="modal">
       <h3 class="modal-title">Save Session</h3>
       <input id="session-name-input" class="modal-input" type="text" placeholder="Session name…" maxlength="80">
+      <p id="duplicate-warning" class="modal-warning" hidden></p>
       <div class="modal-actions">
         <button class="btn-secondary" id="modal-cancel">Cancel</button>
         <button class="btn-primary" id="modal-confirm">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div class="modal-overlay" id="delete-modal" hidden>
+    <div class="modal">
+      <h3 class="modal-title">Delete Session</h3>
+      <p id="delete-modal-desc" class="modal-desc"></p>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="delete-cancel">Cancel</button>
+        <button class="btn-primary btn-danger-primary" id="delete-confirm">Delete</button>
       </div>
     </div>
   </div>

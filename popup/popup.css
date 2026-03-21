@@ -473,6 +473,26 @@ body {
 .modal-input:focus { border-color: rgba(65, 105, 225, 0.5); }
 .modal-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
+.modal-desc {
+  font-size: 12px; color: var(--text-dim);
+  margin-bottom: 16px; line-height: 1.5;
+}
+
+.modal-warning {
+  font-size: 11px; color: var(--danger);
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px; margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.btn-danger-primary {
+  background: var(--danger) !important;
+  color: #fff !important;
+}
+.btn-danger-primary:hover { background: #dc2626 !important; }
+
 /* ─── Toast ─────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);

@@ -462,6 +462,13 @@ function bindStaticEvents() {
   document.getElementById('save-modal').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeSaveModal();
   });
+
+  // feat #7: delete confirmation modal
+  document.getElementById('delete-confirm').addEventListener('click', () => confirmDelete());
+  document.getElementById('delete-cancel').addEventListener('click', () => closeDeleteModal());
+  document.getElementById('delete-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeDeleteModal();
+  });
 }
 
 function bindViewEvents() {
@@ -539,11 +546,28 @@ function openSaveModal() {
 }
 
 function closeSaveModal() {
+  // reset duplicate acknowledgement when modal is dismissed
+  delete document.getElementById('modal-confirm')._duplicateAcknowledged;
+  document.getElementById('duplicate-warning').setAttribute('hidden', '');
   document.getElementById('save-modal').setAttribute('hidden', '');
 }
 
 async function confirmSave() {
   const name = document.getElementById('session-name-input').value.trim() || 'Untitled Session';
+  const confirmBtn = document.getElementById('modal-confirm');
+  const warningEl = document.getElementById('duplicate-warning');
+
+  // feat #8: duplicate detection — require a second click to confirm
+  if (!confirmBtn._duplicateAcknowledged) {
+    const duplicate = findDuplicateSession();
+    if (duplicate) {
+      confirmBtn._duplicateAcknowledged = true;
+      warningEl.textContent = `Similar to "${duplicate.name}". Click Save again to confirm.`;
+      warningEl.removeAttribute('hidden');
+      return;
+    }
+  }
+
   closeSaveModal();
 
   const btn = document.getElementById('btn-save');
@@ -561,6 +585,35 @@ async function confirmSave() {
   } catch (e) {
     toast('Could not save session', 'error');
   }
+}
+
+// feat #8: Jaccard similarity against all saved sessions
+function findDuplicateSession() {
+  const currentUrls = new Set([
+    ...S.liveGroups.flatMap(g => g.tabs.map(t => t.url)),
+    ...S.liveUngrouped.map(t => t.url)
+  ].filter(u => u && !u.startsWith('chrome://')));
+
+  if (currentUrls.size === 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const session of Object.values(S.sessions)) {
+    const sessionUrls = new Set([
+      ...(session.groups ?? []).flatMap(g => (g.tabs ?? []).map(t => t.url)),
+      ...(session.ungroupedTabs ?? []).map(t => t.url)
+    ].filter(Boolean));
+
+    if (sessionUrls.size === 0) continue;
+
+    const intersection = [...currentUrls].filter(u => sessionUrls.has(u)).length;
+    const union = new Set([...currentUrls, ...sessionUrls]).size;
+    const score = intersection / union;
+    if (score > bestScore) { bestScore = score; best = session; }
+  }
+
+  return bestScore >= 0.8 ? best : null;
 }
 
 async function restoreSession(id) {
@@ -635,33 +688,47 @@ async function showRestoreMenu(id) {
   }, 0);
 }
 
-async function deleteSession(id) {
+// feat #7: use a modal for delete confirmation instead of button double-click
+let _pendingDeleteId = null;
+
+function openDeleteModal(id) {
+  _pendingDeleteId = id;
   const session = S.sessions[id];
-  if (!session) return;
+  document.getElementById('delete-modal-desc').textContent =
+    `"${session?.name ?? 'This session'}" will be permanently removed.`;
+  document.getElementById('delete-modal').removeAttribute('hidden');
+}
+
+function closeDeleteModal() {
+  _pendingDeleteId = null;
+  document.getElementById('delete-modal').setAttribute('hidden', '');
+}
+
+async function deleteSession(id) {
+  if (!S.sessions[id]) return;
+  openDeleteModal(id);
+}
+
+async function confirmDelete() {
+  const id = _pendingDeleteId;
+  closeDeleteModal();
+  if (!id || !S.sessions[id]) return;
 
   const card = document.querySelector(`.session-card[data-id="${id}"]`);
-  if (!card) return;
+  await StorageManager.deleteSession(id);
+  delete S.sessions[id];
 
-  const delBtn = card.querySelector('[data-action="delete"]');
-  if (delBtn._confirmPending) {
-    clearTimeout(delBtn._confirmTimer);
-    delete delBtn._confirmPending;
-    delBtn.textContent = '…';
-    await StorageManager.deleteSession(id);
-    delete S.sessions[id];
+  if (card) {
     card.style.transition = 'opacity 0.2s, transform 0.2s';
     card.style.opacity = '0'; card.style.transform = 'translateX(8px)';
-    setTimeout(() => { card.remove(); document.getElementById('sessions-count').textContent = Object.keys(S.sessions).length || ''; }, 200);
-    toast('Session deleted');
+    setTimeout(() => {
+      card.remove();
+      document.getElementById('sessions-count').textContent = Object.keys(S.sessions).length || '';
+    }, 200);
   } else {
-    delBtn._confirmPending = true;
-    const origContent = delBtn.innerHTML;
-    delBtn.innerHTML = '<span style="color:var(--danger);font-size:10px">Confirm?</span>';
-    delBtn._confirmTimer = setTimeout(() => {
-      delBtn.innerHTML = origContent;
-      delete delBtn._confirmPending;
-    }, 2500);
+    render();
   }
+  toast('Session deleted');
 }
 
 async function exportSession(id) {
