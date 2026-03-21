@@ -3,7 +3,7 @@
   "name": "TabVault",
   "version": "1.0.0",
   "description": "Save, organize, and restore tab sessions with notes, tags, and fuzzy search",
-  "permissions": ["tabs", "tabGroups", "storage", "windows"],
+  "permissions": ["tabs", "tabGroups", "storage", "windows", "sidePanel"],
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"
@@ -16,6 +16,9 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
   },
   "icons": {
     "16": "icons/icon16.png",

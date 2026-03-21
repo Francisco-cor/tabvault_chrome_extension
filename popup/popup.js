@@ -21,6 +21,11 @@ const S = {
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 async function init() {
+  // #13: detect side panel context (popup height is capped at ~560px by Chrome)
+  if (window.innerHeight > 600) {
+    document.documentElement.classList.add('panel-mode');
+  }
+
   renderLoading();
   try {
     [S.sessions, S.liveGroups] = await Promise.all([
@@ -421,6 +426,17 @@ function bindStaticEvents() {
     toast('Backup exported', 'success');
   });
 
+  // #13: open as side panel (Chrome 116+); button hidden in panel-mode via CSS
+  document.getElementById('btn-side-panel').addEventListener('click', async () => {
+    try {
+      const win = await chrome.windows.getCurrent();
+      await chrome.sidePanel.open({ windowId: win.id });
+      window.close();
+    } catch {
+      toast('Side panel requires Chrome 116+', 'error');
+    }
+  });
+
   // fix #3: require double-click confirmation before overwriting sessions
   document.getElementById('btn-import').addEventListener('click', () => {
     const existingCount = Object.keys(S.sessions).length;
@@ -576,9 +592,17 @@ async function confirmSave() {
   try {
     const result = await chrome.runtime.sendMessage({ type: 'CAPTURE_SESSION', name });
     if (result?.ok) {
+      // #11: service worker wrote to storage in a different context — invalidate cache
+      StorageManager.invalidate();
       S.sessions = await StorageManager.getSessions();
       render();
       toast(`"${name}" saved`, 'success');
+      // #12: warn if storage is approaching the 10 MB limit
+      StorageManager.getUsagePercent().then(pct => {
+        if (pct >= 80) {
+          setTimeout(() => toast(`Storage ${pct}% full — export a backup soon`, 'error'), 2600);
+        }
+      });
     } else {
       toast(result?.error ?? 'Save failed', 'error');
     }

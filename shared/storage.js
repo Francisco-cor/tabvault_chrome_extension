@@ -15,6 +15,11 @@
 // Tab   = { id, url, title, favicon, note, tags, savedAt }
 
 export const StorageManager = {
+  // #11: in-memory cache — eliminates the get→set round trip on every write.
+  // Valid for the lifetime of the JS context (popup or service worker).
+  // Must be invalidated when another context writes to storage (see invalidate()).
+  _cache: null,
+
   generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
   },
@@ -22,8 +27,16 @@ export const StorageManager = {
   // ─── Sessions ──────────────────────────────────────────────────────────────
 
   async getSessions() {
+    if (this._cache !== null) return this._cache;
     const r = await chrome.storage.local.get('sessions');
-    return r.sessions ?? {};
+    this._cache = r.sessions ?? {};
+    return this._cache;
+  },
+
+  // Force a fresh read from storage — call this after cross-context writes
+  // (e.g. after the service worker saves a captured session).
+  invalidate() {
+    this._cache = null;
   },
 
   async getSession(id) {
@@ -31,6 +44,8 @@ export const StorageManager = {
     return sessions[id] ?? null;
   },
 
+  // All write operations use the cached sessions object, so only one
+  // chrome.storage.local.set() call is needed per operation (no extra get).
   async saveSession(session) {
     const sessions = await this.getSessions();
     sessions[session.id] = { ...session, updated: Date.now() };
@@ -63,6 +78,16 @@ export const StorageManager = {
     await chrome.storage.local.set({ settings });
   },
 
+  // ─── Quota (#12) ───────────────────────────────────────────────────────────
+
+  // chrome.storage.local has a ~10 MB limit without the unlimitedStorage permission.
+  // Returns usage as an integer percentage (0–100+).
+  async getUsagePercent() {
+    const QUOTA_BYTES = 10 * 1024 * 1024; // 10 MB
+    const used = await chrome.storage.local.getBytesInUse(null);
+    return Math.round((used / QUOTA_BYTES) * 100);
+  },
+
   // ─── Export / Import ───────────────────────────────────────────────────────
 
   async exportAll() {
@@ -75,6 +100,7 @@ export const StorageManager = {
     if (!data._tabvault) throw new Error('Not a valid TabVault export file');
     const { _tabvault, version, ...rest } = data;
     await chrome.storage.local.set(rest);
+    this._cache = rest.sessions ?? {}; // keep cache in sync after full overwrite
     return rest;
   },
 
