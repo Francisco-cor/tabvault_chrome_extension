@@ -11,7 +11,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
       captureCurrentWindow(msg.name).then(respond);
       return true;
     case 'RESTORE_SESSION':
-      restoreSession(msg.sessionId).then(respond);
+      restoreSession(msg.sessionId, msg.windowId ?? null).then(respond);
       return true;
   }
 });
@@ -75,21 +75,10 @@ async function captureCurrentWindow(name) {
   }
 }
 
-async function restoreSession(sessionId) {
+async function restoreSession(sessionId, targetWindowId = null) {
   try {
     const session = await StorageManager.getSession(sessionId);
     if (!session) return { ok: false, error: 'Session not found' };
-
-    const allUrls = [
-      ...(session.ungroupedTabs ?? []),
-      ...(session.groups ?? []).flatMap(g => g.tabs ?? [])
-    ].map(t => t.url).filter(u => u && !u.startsWith('chrome://'));
-
-    if (allUrls.length === 0) return { ok: false, error: 'No valid tabs to restore' };
-
-    // Open new window with first URL
-    const newWin = await chrome.windows.create({ url: allUrls[0] });
-    const winId = newWin.id;
 
     const ungrouped = (session.ungroupedTabs ?? []).filter(t => t.url && !t.url.startsWith('chrome://'));
     const groups = (session.groups ?? []).map(g => ({
@@ -97,12 +86,26 @@ async function restoreSession(sessionId) {
       validTabs: (g.tabs ?? []).filter(t => t.url && !t.url.startsWith('chrome://'))
     })).filter(g => g.validTabs.length > 0);
 
-    // Track whether first tab is consumed
-    let firstConsumed = false;
+    const allUrls = [...ungrouped.map(t => t.url), ...groups.flatMap(g => g.validTabs.map(t => t.url))];
+    if (allUrls.length === 0) return { ok: false, error: 'No valid tabs to restore' };
 
-    // Create ungrouped tabs (first URL already used for window creation)
+    let winId;
+    let firstConsumed;
+
+    if (targetWindowId) {
+      // feat #6: restore into existing window — no tab is pre-created
+      winId = targetWindowId;
+      firstConsumed = true;
+    } else {
+      // default: open a new window, first URL is consumed by window creation
+      const newWin = await chrome.windows.create({ url: allUrls[0] });
+      winId = newWin.id;
+      firstConsumed = false;
+    }
+
+    // Create ungrouped tabs
     for (let i = 0; i < ungrouped.length; i++) {
-      if (i === 0) { firstConsumed = true; continue; } // skip — already the window's first tab
+      if (i === 0 && !firstConsumed) { firstConsumed = true; continue; }
       await chrome.tabs.create({ windowId: winId, url: ungrouped[i].url });
     }
 
@@ -111,7 +114,6 @@ async function restoreSession(sessionId) {
       const tabIds = [];
       for (let i = 0; i < group.validTabs.length; i++) {
         if (!firstConsumed && i === 0 && ungrouped.length === 0) {
-          // Use the initial tab created with the window
           const winTabs = await chrome.tabs.query({ windowId: winId });
           tabIds.push(winTabs[0].id);
           firstConsumed = true;

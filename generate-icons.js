@@ -93,21 +93,21 @@ function drawVaultIcon(px, size) {
   const s = size / 128;
 
   // Transparent background
-  // Rounded purple background
-  fillRoundRect(px, size, 0, 0, size, size, Math.floor(22 * s), 124, 58, 237, 255);
+  // Rounded royal blue background
+  fillRoundRect(px, size, 0, 0, size, size, Math.floor(22 * s), 65, 105, 225, 255);
 
   // Vault door face (lighter purple)
   fillRoundRect(px, size,
     Math.floor(16 * s), Math.floor(16 * s),
     Math.floor(96 * s), Math.floor(96 * s),
-    Math.floor(12 * s), 157, 108, 255, 255);
+    Math.floor(12 * s), 82, 126, 245, 255);
 
   // Outer dial ring
   fillCircle(px, size, Math.floor(64 * s), Math.floor(64 * s), Math.floor(24 * s), 13, 13, 20, 255);
   // Inner dial ring
   fillCircle(px, size, Math.floor(64 * s), Math.floor(64 * s), Math.floor(18 * s), 226, 224, 240, 255);
   // Dial center
-  fillCircle(px, size, Math.floor(64 * s), Math.floor(64 * s), Math.floor(9 * s), 124, 58, 237, 255);
+  fillCircle(px, size, Math.floor(64 * s), Math.floor(64 * s), Math.floor(9 * s), 65, 105, 225, 255);
 
   // Bolt holes
   const bolts = [[32, 32], [96, 32], [32, 96], [96, 96]];

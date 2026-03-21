@@ -11,9 +11,11 @@ const S = {
   view: 'sessions',
   sessions: {},
   liveGroups: [],
+  liveUngrouped: [],      // fix #1: ungrouped live tabs
+  detailSessionId: null,  // feat #4: detail/notes view
   searchQuery: '',
   loading: true,
-  expanded: new Set(),      // expanded card/group IDs
+  expanded: new Set(),
   toastTimer: null
 };
 
@@ -44,10 +46,16 @@ async function captureLiveGroups() {
   for (const g of groups) {
     map.set(g.id, { id: g.id, name: g.title || 'Untitled', color: g.color, tabs: [] });
   }
+  const ungrouped = [];
   for (const t of tabs) {
     const tab = { id: t.id, url: t.url || '', title: t.title || t.url || '…', favicon: t.favIconUrl || '' };
-    if (t.groupId > 0 && map.has(t.groupId)) map.get(t.groupId).tabs.push(tab);
+    if (t.groupId > 0 && map.has(t.groupId)) {
+      map.get(t.groupId).tabs.push(tab);
+    } else if (!t.url?.startsWith('chrome://') && !t.url?.startsWith('chrome-extension://')) {
+      ungrouped.push(tab); // fix #1
+    }
   }
+  S.liveUngrouped = ungrouped; // fix #1
   return [...map.values()];
 }
 
@@ -56,17 +64,16 @@ function render() {
   const el = document.getElementById('content');
   const sessionArr = Object.values(S.sessions);
 
-  // Update sessions badge
   const badge = document.getElementById('sessions-count');
   badge.textContent = sessionArr.length > 0 ? sessionArr.length : '';
 
-  // Active nav tab
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === S.view);
   });
 
   if (S.view === 'sessions') el.innerHTML = renderSessionsView(sessionArr);
   else if (S.view === 'groups') el.innerHTML = renderGroupsView();
+  else if (S.view === 'detail') el.innerHTML = renderDetailView();
   else el.innerHTML = renderSearchView();
 
   bindViewEvents();
@@ -106,7 +113,8 @@ function renderSessionsView(sessions) {
 }
 
 function countCurrentTabs() {
-  return S.liveGroups.reduce((n, g) => n + g.tabs.length, 0);
+  // fix #1: include ungrouped live tabs
+  return S.liveGroups.reduce((n, g) => n + g.tabs.length, 0) + S.liveUngrouped.length;
 }
 
 function renderSessionCard(session) {
@@ -120,7 +128,8 @@ function renderSessionCard(session) {
       <span class="group-pill-dot" style="background:${groupColorHex(g.color)}"></span>
       ${esc(g.name || 'Untitled')}
     </span>`).join('');
-  const more = (session.groups?.length ?? 0) > 5 ? `<span class="group-pill text-muted">+${session.groups.length - 5}</span>` : '';
+  const more = (session.groups?.length ?? 0) > 5
+    ? `<span class="group-pill text-muted">+${session.groups.length - 5}</span>` : '';
 
   return `
     <div class="session-card" data-id="${session.id}">
@@ -142,9 +151,17 @@ function renderSessionCard(session) {
           </div>
         </div>
         <div class="session-card-actions">
-          <button class="btn-ghost" data-action="restore" data-id="${session.id}" title="Restore in new window">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 3l14 9-14 9V3z"/></svg>
-            Restore
+          <div class="restore-split">
+            <button class="btn-ghost" data-action="restore" data-id="${session.id}" title="Restore in new window">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 3l14 9-14 9V3z"/></svg>
+              Restore
+            </button>
+            <button class="btn-ghost restore-arrow" data-action="restore-menu" data-id="${session.id}" title="Restore options">
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6,9 12,15 18,9"/></svg>
+            </button>
+          </div>
+          <button class="btn-ghost" data-action="detail" data-id="${session.id}" title="Notes &amp; tags">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </button>
           <button class="btn-ghost" data-action="export-menu" data-id="${session.id}" title="Export">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
@@ -160,7 +177,8 @@ function renderSessionCard(session) {
 
 // ─── Groups View ──────────────────────────────────────────────────────────────
 function renderGroupsView() {
-  if (S.liveGroups.length === 0) return `
+  // fix #5: include ungrouped live tabs in empty check
+  if (S.liveGroups.length === 0 && S.liveUngrouped.length === 0) return `
     <div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
         <path d="M4 6h16M4 12h16M4 18h7"/>
@@ -169,7 +187,31 @@ function renderGroupsView() {
       <p>Create tab groups in Chrome by right-clicking a tab and selecting "Add to group".</p>
     </div>`;
 
-  return S.liveGroups.map(g => renderLiveGroupCard(g)).join('');
+  // fix #5: render ungrouped live tabs section
+  const ungroupedSection = S.liveUngrouped.length > 0 ? `
+    <div class="live-group-card ${S.expanded.has('live-ungrouped') ? 'expanded' : ''}" data-group-id="ungrouped" style="border-left-color:var(--text-muted)">
+      <div class="live-group-header" data-action="toggle-live-group" data-group-id="ungrouped">
+        <div class="live-group-title">
+          <span class="color-dot" style="background:var(--text-muted)"></span>
+          <span class="live-group-name">Ungrouped</span>
+          <span class="live-group-count">${S.liveUngrouped.length} tab${S.liveUngrouped.length !== 1 ? 's' : ''}</span>
+        </div>
+        <svg class="live-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9,18 15,12 9,6"/></svg>
+      </div>
+      <div class="live-group-tabs">${S.liveUngrouped.map(t => `
+        <div class="live-tab-item">
+          ${t.favicon
+            ? `<img class="tab-favicon" src="${esc(t.favicon)}" alt="" onerror="this.style.display='none'">`
+            : `<div class="tab-favicon-fallback"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg></div>`}
+          <div class="live-tab-info">
+            <div class="live-tab-title" title="${esc(t.title)}">${esc(t.title)}</div>
+            <div class="live-tab-url" title="${esc(t.url)}">${esc(truncateUrl(t.url))}</div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  return S.liveGroups.map(g => renderLiveGroupCard(g)).join('') + ungroupedSection;
 }
 
 function renderLiveGroupCard(g) {
@@ -201,6 +243,77 @@ function renderLiveGroupCard(g) {
     </div>`;
 }
 
+// ─── Detail View (feat #4: notes & tags) ─────────────────────────────────────
+function renderDetailView() {
+  const session = S.sessions[S.detailSessionId];
+  if (!session) { S.view = 'sessions'; return renderSessionsView(Object.values(S.sessions)); }
+
+  const groups = (session.groups ?? []).map(g => renderDetailGroup(g, session.id)).join('');
+  const ungrouped = session.ungroupedTabs ?? [];
+  const ungroupedSection = ungrouped.length > 0 ? `
+    <div class="detail-group">
+      <div class="detail-group-header">
+        <span class="detail-group-name">Ungrouped</span>
+        <span class="live-group-count">${ungrouped.length} tab${ungrouped.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${ungrouped.map(tab => renderDetailTab(tab, null, session.id)).join('')}
+    </div>` : '';
+
+  const body = groups + ungroupedSection || `<p class="text-muted" style="text-align:center;margin-top:24px;font-size:12px">No groups in this session.</p>`;
+
+  return `
+    <div class="detail-back" data-action="back">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg>
+      <span>${esc(session.name)}</span>
+    </div>
+    ${body}`;
+}
+
+function renderDetailGroup(group, sessionId) {
+  const colorHex = groupColorHex(group.color);
+  const tags = (group.tags ?? []).map((tag, i) => `
+    <span class="tag-chip">
+      ${esc(tag)}
+      <button class="tag-remove" data-action="remove-group-tag"
+        data-session-id="${sessionId}" data-group-id="${group.id}" data-tag-index="${i}">×</button>
+    </span>`).join('');
+
+  return `
+    <div class="detail-group">
+      <div class="detail-group-header" style="border-left:2px solid ${colorHex}">
+        <span class="color-dot" style="background:${colorHex}"></span>
+        <span class="detail-group-name">${esc(group.name)}</span>
+        <span class="live-group-count">${group.tabs?.length ?? 0} tab${(group.tabs?.length ?? 0) !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="tags-row">
+        ${tags}
+        <button class="tag-add-btn" data-action="add-group-tag"
+          data-session-id="${sessionId}" data-group-id="${group.id}">+ tag</button>
+      </div>
+      <textarea class="note-area" placeholder="Group note…"
+        data-action="note-group" data-session-id="${sessionId}" data-group-id="${group.id}"
+        rows="2">${esc(group.note ?? '')}</textarea>
+      ${(group.tabs ?? []).map(tab => renderDetailTab(tab, group.id, sessionId)).join('')}
+    </div>`;
+}
+
+function renderDetailTab(tab, groupId, sessionId) {
+  return `
+    <div class="detail-tab">
+      ${tab.favicon
+        ? `<img class="tab-favicon" src="${esc(tab.favicon)}" alt="" onerror="this.style.display='none'">`
+        : `<div class="tab-favicon-fallback"></div>`}
+      <div class="detail-tab-content">
+        <div class="live-tab-title" title="${esc(tab.title)}">${esc(tab.title || tab.url)}</div>
+        <textarea class="note-area" style="min-height:26px;margin:3px 0 0;font-size:10.5px"
+          placeholder="Tab note…"
+          data-action="note-tab" data-session-id="${sessionId}"
+          data-group-id="${groupId ?? ''}" data-tab-id="${tab.id}"
+          rows="1">${esc(tab.note ?? '')}</textarea>
+      </div>
+    </div>`;
+}
+
 // ─── Search View ──────────────────────────────────────────────────────────────
 function renderSearchView() {
   const results = searchSessions(S.sessions, S.searchQuery);
@@ -229,7 +342,6 @@ function renderSearchResults(results) {
   return results.map(session => {
     const matchingTabs = session._matchingTabs ?? [];
     if (matchingTabs.length === 0) {
-      // Session name matched
       return `
         <div class="search-result-group">
           <div class="search-result-session">${esc(session.name)}</div>
@@ -241,7 +353,9 @@ function renderSearchResults(results) {
         <div class="search-result-session">${esc(session.name)}</div>
         ${matchingTabs.sort((a, b) => b._score - a._score).slice(0, 8).map(tab => `
           <a class="search-tab-item" href="${esc(tab.url)}" target="_blank" title="${esc(tab.title)}\n${esc(tab.url)}">
-            <img class="tab-favicon" src="https://www.google.com/s2/favicons?domain=${esc(new URL(tab.url).hostname)}&sz=32" alt="" onerror="this.style.display='none'" width="14" height="14">
+            ${tab.favicon
+              ? `<img class="tab-favicon" src="${esc(tab.favicon)}" alt="" onerror="this.style.display='none'" width="14" height="14">`
+              : `<div class="tab-favicon-fallback" style="width:14px;height:14px"></div>`}
             <div class="search-tab-info">
               <div class="search-tab-title">${esc(tab.title || tab.url)}</div>
               <div class="search-tab-meta">
@@ -263,10 +377,11 @@ function renderAllTabsForSession(session) {
 
   return allTabs.map(tab => {
     try {
-      const hostname = new URL(tab.url).hostname;
       return `
         <a class="search-tab-item" href="${esc(tab.url)}" target="_blank">
-          <img class="tab-favicon" src="https://www.google.com/s2/favicons?domain=${hostname}&sz=32" alt="" onerror="this.style.display='none'" width="14" height="14">
+          ${tab.favicon
+            ? `<img class="tab-favicon" src="${esc(tab.favicon)}" alt="" onerror="this.style.display='none'" width="14" height="14">`
+            : `<div class="tab-favicon-fallback" style="width:14px;height:14px"></div>`}
           <div class="search-tab-info">
             <div class="search-tab-title">${esc(tab.title || tab.url)}</div>
             <div class="search-tab-meta"><span class="search-tab-url">${esc(truncateUrl(tab.url))}</span></div>
@@ -290,7 +405,6 @@ function renderRecentTabs() {
 
 // ─── Event Binding ───────────────────────────────────────────────────────────
 function bindStaticEvents() {
-  // Nav tab switching
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       S.view = btn.dataset.view;
@@ -301,17 +415,29 @@ function bindStaticEvents() {
     });
   });
 
-  // Export all
   document.getElementById('btn-export-all').addEventListener('click', async () => {
     const json = await StorageManager.exportAll();
     downloadText(json, 'tabvault-backup.json');
     toast('Backup exported', 'success');
   });
 
-  // Import
+  // fix #3: require double-click confirmation before overwriting sessions
   document.getElementById('btn-import').addEventListener('click', () => {
+    const existingCount = Object.keys(S.sessions).length;
+    const btn = document.getElementById('btn-import');
+
+    if (existingCount > 0 && !btn._confirmPending) {
+      btn._confirmPending = true;
+      toast(`Will overwrite ${existingCount} session${existingCount !== 1 ? 's' : ''}. Click Import again to confirm.`, 'error');
+      btn._confirmTimer = setTimeout(() => { delete btn._confirmPending; }, 3000);
+      return;
+    }
+
+    delete btn._confirmPending;
+    clearTimeout(btn._confirmTimer);
     document.getElementById('import-file').click();
   });
+
   document.getElementById('import-file').addEventListener('change', async e => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -327,7 +453,6 @@ function bindStaticEvents() {
     e.target.value = '';
   });
 
-  // Save modal confirm
   document.getElementById('modal-confirm').addEventListener('click', () => confirmSave());
   document.getElementById('modal-cancel').addEventListener('click', () => closeSaveModal());
   document.getElementById('session-name-input').addEventListener('keydown', e => {
@@ -342,20 +467,17 @@ function bindStaticEvents() {
 function bindViewEvents() {
   const content = document.getElementById('content');
 
-  // Save button in sessions view
   document.getElementById('btn-save')?.addEventListener('click', openSaveModal);
   document.getElementById('save-cta')?.addEventListener('click', e => {
     if (!e.target.closest('button')) openSaveModal();
   });
 
-  // Search input
   const searchInput = document.getElementById('search-input');
   if (searchInput) {
     searchInput.addEventListener('input', e => {
       S.searchQuery = e.target.value;
       const res = searchSessions(S.sessions, S.searchQuery);
       const rContainer = content.querySelector('.search-bar');
-      // Re-render only results below search bar
       const after = rContainer.nextSibling;
       if (after) after.remove();
       const div = document.createElement('div');
@@ -365,7 +487,16 @@ function bindViewEvents() {
     searchInput.addEventListener('focus', e => e.target.select());
   }
 
-  // Delegated events on content
+  // feat #4: wire note autosave on blur for detail view
+  if (S.view === 'detail') {
+    content.querySelectorAll('textarea[data-action="note-group"]').forEach(el => {
+      el.addEventListener('blur', () => saveNoteGroup(el.dataset.sessionId, el.dataset.groupId, el.value));
+    });
+    content.querySelectorAll('textarea[data-action="note-tab"]').forEach(el => {
+      el.addEventListener('blur', () => saveNoteTab(el.dataset.sessionId, el.dataset.groupId || null, el.dataset.tabId, el.value));
+    });
+  }
+
   content.addEventListener('click', handleContentClick);
   content.addEventListener('dblclick', handleDoubleClick);
 }
@@ -378,11 +509,16 @@ async function handleContentClick(e) {
   const id = btn.dataset.id;
 
   switch (action) {
-    case 'restore': await restoreSession(id); break;
-    case 'delete':  await deleteSession(id); break;
-    case 'export-menu': await exportSession(id); break;
+    case 'restore':           await restoreSession(id); break;
+    case 'restore-menu':      await showRestoreMenu(id); break;      // feat #6
+    case 'delete':            await deleteSession(id); break;
+    case 'export-menu':       await exportSession(id); break;
     case 'toggle-live-group': toggleLiveGroup(btn.dataset.groupId); break;
-    case 'rename': startRename(btn, id); break;
+    case 'rename':            startRename(btn, id); break;
+    case 'detail':            openDetailView(id); break;             // feat #4
+    case 'back':              S.view = 'sessions'; render(); break;
+    case 'remove-group-tag':  await removeGroupTag(btn.dataset.sessionId, btn.dataset.groupId, +btn.dataset.tagIndex); break;
+    case 'add-group-tag':     startAddGroupTag(btn); break;
   }
 }
 
@@ -396,7 +532,8 @@ function openSaveModal() {
   const modal = document.getElementById('save-modal');
   const input = document.getElementById('session-name-input');
   const now = new Date();
-  input.value = `${now.toLocaleDateString('en', { month: 'short', day: 'numeric' })} session`;
+  // use undefined locale so it respects the user's system language
+  input.value = `${now.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} session`;
   modal.removeAttribute('hidden');
   requestAnimationFrame(() => { input.focus(); input.select(); });
 }
@@ -442,11 +579,66 @@ async function restoreSession(id) {
   }
 }
 
+// feat #6: restore into the current window instead of a new one
+async function restoreSessionInWindow(id, windowId) {
+  const session = S.sessions[id];
+  if (!session) return;
+
+  toast(`Restoring "${session.name}" here…`);
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'RESTORE_SESSION', sessionId: id, windowId });
+    if (result?.ok) toast('Tabs added to this window', 'success');
+    else toast(result?.error ?? 'Restore failed', 'error');
+  } catch (e) {
+    toast('Could not restore session', 'error');
+  }
+}
+
+// feat #6: dropdown to choose new window vs this window
+async function showRestoreMenu(id) {
+  const btn = document.querySelector(`[data-action="restore-menu"][data-id="${id}"]`);
+  if (!btn) return;
+
+  const existing = document.getElementById('restore-menu-popup');
+  if (existing) { existing.remove(); return; }
+
+  const menu = document.createElement('div');
+  menu.id = 'restore-menu-popup';
+  menu.style.cssText = `position:fixed;background:var(--surface-2);border:1px solid var(--border-hover);border-radius:var(--radius);padding:4px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:140px`;
+  menu.innerHTML = `
+    <button class="btn-ghost" style="display:block;width:100%;text-align:left" id="rst-new-win">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:4px"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20"/></svg>
+      New window
+    </button>
+    <button class="btn-ghost" style="display:block;width:100%;text-align:left" id="rst-this-win">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:4px"><path d="M5 3l14 9-14 9V3z"/></svg>
+      This window
+    </button>`;
+
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  document.body.appendChild(menu);
+
+  menu.querySelector('#rst-new-win').addEventListener('click', async () => {
+    menu.remove();
+    await restoreSession(id);
+  });
+  menu.querySelector('#rst-this-win').addEventListener('click', async () => {
+    menu.remove();
+    const win = await chrome.windows.getCurrent();
+    await restoreSessionInWindow(id, win.id);
+  });
+
+  setTimeout(() => {
+    document.addEventListener('click', () => menu.remove(), { once: true });
+  }, 0);
+}
+
 async function deleteSession(id) {
   const session = S.sessions[id];
   if (!session) return;
 
-  // Simple confirm using the card itself (no native dialog)
   const card = document.querySelector(`.session-card[data-id="${id}"]`);
   if (!card) return;
 
@@ -476,11 +668,9 @@ async function exportSession(id) {
   const session = S.sessions[id];
   if (!session) return;
 
-  // Toggle mini menu
   const btn = document.querySelector(`[data-action="export-menu"][data-id="${id}"]`);
   if (!btn) return;
 
-  // Remove existing menu
   const existing = document.getElementById('export-menu-popup');
   if (existing) { existing.remove(); return; }
 
@@ -507,7 +697,6 @@ async function exportSession(id) {
     menu.remove(); toast('Exported as Markdown', 'success');
   });
 
-  // Close on outside click
   setTimeout(() => {
     document.addEventListener('click', () => menu.remove(), { once: true });
   }, 0);
@@ -521,19 +710,24 @@ function toggleLiveGroup(groupId) {
   if (card) card.classList.toggle('expanded', S.expanded.has(key));
 }
 
+// fix #2: use AbortController so keydown listener never accumulates
 function startRename(el, id) {
+  if (el.getAttribute('contenteditable') === 'true') return;
+
   el.setAttribute('contenteditable', 'true');
   el.classList.add('editing');
   el.focus();
 
-  // Select all text
   const range = document.createRange();
   range.selectNodeContents(el);
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
 
+  const controller = new AbortController();
+
   const finish = async (save) => {
+    controller.abort();
     el.removeAttribute('contenteditable');
     el.classList.remove('editing');
     if (save) {
@@ -551,9 +745,83 @@ function startRename(el, id) {
   el.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); finish(true); }
     if (e.key === 'Escape') finish(false);
-  }, { once: false });
+  }, { signal: controller.signal });
 
   el.addEventListener('blur', () => finish(true), { once: true });
+}
+
+// ─── Detail view actions (feat #4) ───────────────────────────────────────────
+function openDetailView(id) {
+  S.detailSessionId = id;
+  S.view = 'detail';
+  render();
+}
+
+async function removeGroupTag(sessionId, groupId, tagIndex) {
+  const session = S.sessions[sessionId];
+  if (!session) return;
+  const group = session.groups?.find(g => g.id === groupId);
+  if (!group) return;
+  group.tags = (group.tags ?? []).filter((_, i) => i !== tagIndex);
+  await StorageManager.updateSession(sessionId, { groups: session.groups });
+  render();
+}
+
+function startAddGroupTag(btn) {
+  const sessionId = btn.dataset.sessionId;
+  const groupId = btn.dataset.groupId;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tag-input';
+  input.placeholder = 'tag…';
+  input.maxLength = 30;
+  btn.replaceWith(input);
+  input.focus();
+
+  const commit = async () => {
+    const val = input.value.trim();
+    if (val) {
+      const session = S.sessions[sessionId];
+      if (session) {
+        const group = session.groups?.find(g => g.id === groupId);
+        if (group) {
+          group.tags = [...(group.tags ?? []), val];
+          await StorageManager.updateSession(sessionId, { groups: session.groups });
+        }
+      }
+    }
+    render();
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') render();
+  });
+  input.addEventListener('blur', commit, { once: true });
+}
+
+async function saveNoteGroup(sessionId, groupId, note) {
+  const session = S.sessions[sessionId];
+  if (!session) return;
+  const group = session.groups?.find(g => g.id === groupId);
+  if (!group || group.note === note) return;
+  group.note = note;
+  await StorageManager.updateSession(sessionId, { groups: session.groups });
+}
+
+async function saveNoteTab(sessionId, groupId, tabId, note) {
+  const session = S.sessions[sessionId];
+  if (!session) return;
+  let tab;
+  if (groupId) {
+    tab = session.groups?.find(g => g.id === groupId)?.tabs?.find(t => t.id === tabId);
+  } else {
+    tab = session.ungroupedTabs?.find(t => t.id === tabId);
+  }
+  if (!tab || tab.note === note) return;
+  tab.note = note;
+  await StorageManager.updateSession(sessionId, { groups: session.groups, ungroupedTabs: session.ungroupedTabs });
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 A Chrome extension for saving, organizing, and restoring tab sessions — with notes, free tags, and fuzzy search. Everything stored locally; no account, no sync, no tracking.
 
-![Chrome MV3](https://img.shields.io/badge/Manifest-V3-7c3aed?style=flat-square)
+![Chrome MV3](https://img.shields.io/badge/Manifest-V3-4169e1?style=flat-square)
 ![Vanilla JS](https://img.shields.io/badge/JS-ES%20Modules-f0eff4?style=flat-square&labelColor=1d1d20)
 ![Local only](https://img.shields.io/badge/Storage-Local%20only-22c55e?style=flat-square)
 
