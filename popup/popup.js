@@ -10,14 +10,27 @@ import {
 const S = {
   view: 'sessions',
   sessions: {},
+  trash: {},
   liveGroups: [],
   liveUngrouped: [],      // fix #1: ungrouped live tabs
   detailSessionId: null,  // feat #4: detail/notes view
   searchQuery: '',
+  sortBy: 'newest',       // sessions sort: newest | oldest | az | za | tabs
+  theme: 'dark',          // ui theme: dark | light
   loading: true,
   expanded: new Set(),
-  toastTimer: null
+  toastTimer: null,
+  _liveListeners: null    // refs for live-groups real-time cleanup (#7)
 };
+
+// ─── Theme ───────────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.classList.toggle('light', theme === 'light');
+  const dark = document.getElementById('theme-icon-dark');
+  const light = document.getElementById('theme-icon-light');
+  if (dark)  dark.style.display  = theme === 'light' ? 'block' : 'none';
+  if (light) light.style.display = theme === 'light' ? 'none'  : 'block';
+}
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 async function init() {
@@ -28,10 +41,19 @@ async function init() {
 
   renderLoading();
   try {
-    [S.sessions, S.liveGroups] = await Promise.all([
+    const [sessions, liveGroups, trash, settings] = await Promise.all([
       StorageManager.getSessions(),
-      captureLiveGroups()
+      captureLiveGroups(),
+      StorageManager.getTrash(),
+      StorageManager.getSettings()
     ]);
+    S.sessions = sessions;
+    S.liveGroups = liveGroups;
+    S.trash = trash;
+    S.theme = settings.theme ?? 'dark';
+    S.sortBy = settings.sortBy ?? 'newest';
+    applyTheme(S.theme);
+    StorageManager.purgeOldTrash();
   } catch (e) {
     console.error('[TabVault]', e);
   }
@@ -72,6 +94,12 @@ function render() {
   const badge = document.getElementById('sessions-count');
   badge.textContent = sessionArr.length > 0 ? sessionArr.length : '';
 
+  const trashBadge = document.getElementById('trash-count');
+  if (trashBadge) {
+    const trashCount = Object.keys(S.trash).length;
+    trashBadge.textContent = trashCount > 0 ? trashCount : '';
+  }
+
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === S.view);
   });
@@ -79,6 +107,7 @@ function render() {
   if (S.view === 'sessions') el.innerHTML = renderSessionsView(sessionArr);
   else if (S.view === 'groups') el.innerHTML = renderGroupsView();
   else if (S.view === 'detail') el.innerHTML = renderDetailView();
+  else if (S.view === 'trash') el.innerHTML = renderTrashView();
   else el.innerHTML = renderSearchView();
 
   bindViewEvents();
@@ -93,8 +122,19 @@ function renderLoading() {
 }
 
 // ─── Sessions View ────────────────────────────────────────────────────────────
+function sortSessions(sessions) {
+  const arr = [...sessions];
+  switch (S.sortBy) {
+    case 'oldest':  return arr.sort((a, b) => a.updated - b.updated);
+    case 'az':      return arr.sort((a, b) => a.name.localeCompare(b.name));
+    case 'za':      return arr.sort((a, b) => b.name.localeCompare(a.name));
+    case 'tabs':    return arr.sort((a, b) => (b.metadata?.tabCount ?? 0) - (a.metadata?.tabCount ?? 0));
+    default:        return arr.sort((a, b) => b.updated - a.updated); // newest
+  }
+}
+
 function renderSessionsView(sessions) {
-  const sorted = [...sessions].sort((a, b) => b.updated - a.updated);
+  const sorted = sortSessions(sessions);
 
   const cards = sorted.length === 0 ? `
     <div class="empty-state">
@@ -114,6 +154,17 @@ function renderSessionsView(sessions) {
       </div>
       <button class="btn-primary" id="btn-save">Save</button>
     </div>
+    ${sorted.length > 1 ? `
+    <div class="sort-bar">
+      <span class="sort-label">Sort</span>
+      <select class="sort-select" id="sort-select">
+        <option value="newest" ${S.sortBy === 'newest' ? 'selected' : ''}>Newest</option>
+        <option value="oldest" ${S.sortBy === 'oldest' ? 'selected' : ''}>Oldest</option>
+        <option value="az"     ${S.sortBy === 'az'     ? 'selected' : ''}>A → Z</option>
+        <option value="za"     ${S.sortBy === 'za'     ? 'selected' : ''}>Z → A</option>
+        <option value="tabs"   ${S.sortBy === 'tabs'   ? 'selected' : ''}>Most tabs</option>
+      </select>
+    </div>` : ''}
     ${cards}`;
 }
 
@@ -136,11 +187,18 @@ function renderSessionCard(session) {
   const more = (session.groups?.length ?? 0) > 5
     ? `<span class="group-pill text-muted">+${session.groups.length - 5}</span>` : '';
 
+  const autoBadge = session.autoSaved
+    ? `<span class="auto-badge">auto</span>`
+    : '';
+
   return `
     <div class="session-card" data-id="${session.id}">
       <div class="session-card-header">
         <div class="session-card-info">
-          <div class="session-name no-select" data-action="rename" data-id="${session.id}" title="Click to rename">${esc(session.name)}</div>
+          <div class="session-name-row">
+            <div class="session-name no-select" data-action="rename" data-id="${session.id}" title="Click to rename">${esc(session.name)}</div>
+            ${autoBadge}
+          </div>
           <div class="session-meta">
             <span class="meta-chip">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -271,6 +329,10 @@ function renderDetailView() {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg>
       <span>${esc(session.name)}</span>
     </div>
+    <button class="btn-secondary detail-add-tab" data-action="add-current-tab" data-session-id="${session.id}">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add current tab
+    </button>
     ${body}`;
 }
 
@@ -289,6 +351,10 @@ function renderDetailGroup(group, sessionId) {
         <span class="color-dot" style="background:${colorHex}"></span>
         <span class="detail-group-name">${esc(group.name)}</span>
         <span class="live-group-count">${group.tabs?.length ?? 0} tab${(group.tabs?.length ?? 0) !== 1 ? 's' : ''}</span>
+        <button class="btn-ghost btn-danger detail-remove-group" data-action="remove-group"
+          data-session-id="${sessionId}" data-group-id="${group.id}" title="Remove group">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
       </div>
       <div class="tags-row">
         ${tags}
@@ -316,6 +382,11 @@ function renderDetailTab(tab, groupId, sessionId) {
           data-group-id="${groupId ?? ''}" data-tab-id="${tab.id}"
           rows="1">${esc(tab.note ?? '')}</textarea>
       </div>
+      <button class="btn-ghost btn-danger detail-tab-remove" data-action="remove-tab"
+        data-session-id="${sessionId}" data-group-id="${groupId ?? ''}" data-tab-id="${tab.id}"
+        title="Remove tab">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>`;
 }
 
@@ -396,6 +467,48 @@ function renderAllTabsForSession(session) {
   }).join('');
 }
 
+// ─── Trash View (#6) ──────────────────────────────────────────────────────────
+function renderTrashView() {
+  const items = Object.values(S.trash).sort((a, b) => b.deletedAt - a.deletedAt);
+  if (items.length === 0) return `
+    <div class="empty-state">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+        <polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        <path d="M10 11v6M14 11v6"/>
+      </svg>
+      <h4>Trash is empty</h4>
+      <p>Deleted sessions are kept here for 30 days.</p>
+    </div>`;
+
+  return items.map(session => {
+    const tabCount = session.metadata?.tabCount ?? 0;
+    return `
+      <div class="session-card trash-card" data-id="${session.id}">
+        <div class="session-card-header">
+          <div class="session-card-info">
+            <div class="session-name-row">
+              <div class="session-name">${esc(session.name)}</div>
+            </div>
+            <div class="session-meta">
+              <span class="meta-chip">${tabCount} tab${tabCount !== 1 ? 's' : ''}</span>
+              <span class="meta-dot"></span>
+              <span class="meta-chip">Deleted ${formatRelativeTime(session.deletedAt)}</span>
+            </div>
+          </div>
+          <div class="session-card-actions" style="opacity:1">
+            <button class="btn-ghost" data-action="restore-trash" data-id="${session.id}" title="Restore session">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              Restore
+            </button>
+            <button class="btn-ghost btn-danger" data-action="delete-permanent" data-id="${session.id}" title="Delete forever">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function renderRecentTabs() {
   const sessions = Object.values(S.sessions).sort((a, b) => b.updated - a.updated).slice(0, 3);
   if (sessions.length === 0) return `<p class="text-dim" style="text-align:center;margin-top:32px;font-size:12px">No saved sessions to search.</p>`;
@@ -408,16 +521,70 @@ function renderRecentTabs() {
       </div>`).join('');
 }
 
+// ─── Live Groups real-time listeners (#7) ─────────────────────────────────────
+function startLiveListeners() {
+  if (S._liveListeners) return;
+  let debounceTimer = null;
+
+  const refresh = async () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      if (S.view !== 'groups') return;
+      S.liveGroups = await captureLiveGroups();
+      if (S.view === 'groups') render();
+    }, 120);
+  };
+
+  const onTabCreated   = ()               => refresh();
+  const onTabRemoved   = ()               => refresh();
+  const onTabUpdated   = (id, change)     => {
+    if (change.title !== undefined || change.url !== undefined || change.groupId !== undefined) refresh();
+  };
+  const onGroupCreated = ()               => refresh();
+  const onGroupRemoved = ()               => refresh();
+  const onGroupUpdated = ()               => refresh();
+
+  chrome.tabs.onCreated.addListener(onTabCreated);
+  chrome.tabs.onRemoved.addListener(onTabRemoved);
+  chrome.tabs.onUpdated.addListener(onTabUpdated);
+  chrome.tabGroups.onCreated.addListener(onGroupCreated);
+  chrome.tabGroups.onRemoved.addListener(onGroupRemoved);
+  chrome.tabGroups.onUpdated.addListener(onGroupUpdated);
+
+  S._liveListeners = { onTabCreated, onTabRemoved, onTabUpdated, onGroupCreated, onGroupRemoved, onGroupUpdated };
+}
+
+function stopLiveListeners() {
+  if (!S._liveListeners) return;
+  const { onTabCreated, onTabRemoved, onTabUpdated, onGroupCreated, onGroupRemoved, onGroupUpdated } = S._liveListeners;
+  chrome.tabs.onCreated.removeListener(onTabCreated);
+  chrome.tabs.onRemoved.removeListener(onTabRemoved);
+  chrome.tabs.onUpdated.removeListener(onTabUpdated);
+  chrome.tabGroups.onCreated.removeListener(onGroupCreated);
+  chrome.tabGroups.onRemoved.removeListener(onGroupRemoved);
+  chrome.tabGroups.onUpdated.removeListener(onGroupUpdated);
+  S._liveListeners = null;
+}
+
 // ─── Event Binding ───────────────────────────────────────────────────────────
 function bindStaticEvents() {
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.addEventListener('click', () => {
+      const prev = S.view;
       S.view = btn.dataset.view;
+      if (prev === 'groups' && S.view !== 'groups') stopLiveListeners();
+      if (S.view === 'groups') startLiveListeners();
       render();
       if (S.view === 'search') {
         requestAnimationFrame(() => document.getElementById('search-input')?.focus());
       }
     });
+  });
+
+  document.getElementById('btn-theme').addEventListener('click', async () => {
+    S.theme = S.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(S.theme);
+    await StorageManager.saveSettings({ theme: S.theme, sortBy: S.sortBy });
   });
 
   document.getElementById('btn-export-all').addEventListener('click', async () => {
@@ -437,36 +604,77 @@ function bindStaticEvents() {
     }
   });
 
-  // fix #3: require double-click confirmation before overwriting sessions
+  // Import: show menu to choose merge vs overwrite
   document.getElementById('btn-import').addEventListener('click', () => {
-    const existingCount = Object.keys(S.sessions).length;
+    const existing = document.getElementById('import-menu-popup');
+    if (existing) { existing.remove(); return; }
+
     const btn = document.getElementById('btn-import');
+    const hasExisting = Object.keys(S.sessions).length > 0;
 
-    if (existingCount > 0 && !btn._confirmPending) {
-      btn._confirmPending = true;
-      toast(`Will overwrite ${existingCount} session${existingCount !== 1 ? 's' : ''}. Click Import again to confirm.`, 'error');
-      btn._confirmTimer = setTimeout(() => { delete btn._confirmPending; }, 3000);
-      return;
-    }
+    const menu = document.createElement('div');
+    menu.id = 'import-menu-popup';
+    menu.style.cssText = `position:fixed;background:var(--surface-2);border:1px solid var(--border-hover);border-radius:var(--radius);padding:4px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:154px`;
+    menu.innerHTML = `
+      <button class="btn-ghost" style="display:block;width:100%;text-align:left" id="imp-merge">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:4px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        Merge with existing
+      </button>
+      ${hasExisting ? `<button class="btn-ghost btn-danger" style="display:block;width:100%;text-align:left" id="imp-replace">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:4px"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
+        Replace all
+      </button>` : ''}`;
 
-    delete btn._confirmPending;
-    clearTimeout(btn._confirmTimer);
-    document.getElementById('import-file').click();
+    const rect = btn.getBoundingClientRect();
+    menu.style.top  = (rect.bottom + 4) + 'px';
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+    document.body.appendChild(menu);
+
+    menu.querySelector('#imp-merge')?.addEventListener('click', () => {
+      menu.remove();
+      document.getElementById('import-file').dataset.mode = 'merge';
+      document.getElementById('import-file').click();
+    });
+    menu.querySelector('#imp-replace')?.addEventListener('click', () => {
+      menu.remove();
+      document.getElementById('import-file').dataset.mode = 'replace';
+      document.getElementById('import-file').click();
+    });
+
+    setTimeout(() => {
+      document.addEventListener('click', () => menu.remove(), { once: true });
+    }, 0);
   });
 
   document.getElementById('import-file').addEventListener('change', async e => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const mode = e.target.dataset.mode ?? 'replace';
     try {
       const text = await readFileAsText(file);
-      await StorageManager.importAll(text);
-      S.sessions = await StorageManager.getSessions();
+      const data = JSON.parse(text);
+      if (!data._tabvault) throw new Error('Not a valid TabVault export file');
+
+      if (mode === 'merge') {
+        // Merge: add imported sessions without deleting existing ones
+        const imported = data.sessions ?? {};
+        const existing = await StorageManager.getSessions();
+        const merged = { ...existing, ...imported }; // imported wins on collision
+        await chrome.storage.local.set({ sessions: merged });
+        StorageManager.invalidate();
+        S.sessions = await StorageManager.getSessions();
+        toast(`Merged ${Object.keys(imported).length} sessions`, 'success');
+      } else {
+        await StorageManager.importAll(text);
+        S.sessions = await StorageManager.getSessions();
+        toast(`Imported ${Object.keys(S.sessions).length} sessions`, 'success');
+      }
       render();
-      toast(`Imported ${Object.keys(S.sessions).length} sessions`, 'success');
     } catch (err) {
       toast(`Import failed: ${err.message}`, 'error');
     }
     e.target.value = '';
+    delete e.target.dataset.mode;
   });
 
   document.getElementById('modal-confirm').addEventListener('click', () => confirmSave());
@@ -493,6 +701,12 @@ function bindViewEvents() {
   document.getElementById('btn-save')?.addEventListener('click', openSaveModal);
   document.getElementById('save-cta')?.addEventListener('click', e => {
     if (!e.target.closest('button')) openSaveModal();
+  });
+
+  document.getElementById('sort-select')?.addEventListener('change', async e => {
+    S.sortBy = e.target.value;
+    await StorageManager.saveSettings({ theme: S.theme, sortBy: S.sortBy });
+    render();
   });
 
   const searchInput = document.getElementById('search-input');
@@ -533,15 +747,22 @@ async function handleContentClick(e) {
 
   switch (action) {
     case 'restore':           await restoreSession(id); break;
-    case 'restore-menu':      await showRestoreMenu(id); break;      // feat #6
+    case 'restore-menu':      await showRestoreMenu(id); break;
     case 'delete':            await deleteSession(id); break;
     case 'export-menu':       await exportSession(id); break;
     case 'toggle-live-group': toggleLiveGroup(btn.dataset.groupId); break;
     case 'rename':            startRename(btn, id); break;
-    case 'detail':            openDetailView(id); break;             // feat #4
+    case 'detail':            openDetailView(id); break;
     case 'back':              S.view = 'sessions'; render(); break;
     case 'remove-group-tag':  await removeGroupTag(btn.dataset.sessionId, btn.dataset.groupId, +btn.dataset.tagIndex); break;
     case 'add-group-tag':     startAddGroupTag(btn); break;
+    // #5: session editing
+    case 'remove-tab':        await removeTab(btn.dataset.sessionId, btn.dataset.groupId || null, btn.dataset.tabId); break;
+    case 'remove-group':      await removeGroup(btn.dataset.sessionId, btn.dataset.groupId); break;
+    case 'add-current-tab':   await addCurrentTab(btn.dataset.sessionId); break;
+    // #6: trash
+    case 'restore-trash':     await restoreFromTrash(btn.dataset.id); break;
+    case 'delete-permanent':  await deletePermanent(btn.dataset.id); break;
   }
 }
 
@@ -719,7 +940,7 @@ function openDeleteModal(id) {
   _pendingDeleteId = id;
   const session = S.sessions[id];
   document.getElementById('delete-modal-desc').textContent =
-    `"${session?.name ?? 'This session'}" will be permanently removed.`;
+    `"${session?.name ?? 'This session'}" will be moved to Trash.`;
   document.getElementById('delete-modal').removeAttribute('hidden');
 }
 
@@ -738,8 +959,10 @@ async function confirmDelete() {
   closeDeleteModal();
   if (!id || !S.sessions[id]) return;
 
+  const session = S.sessions[id];
   const card = document.querySelector(`.session-card[data-id="${id}"]`);
-  await StorageManager.deleteSession(id);
+  await StorageManager.deleteSession(id); // now soft-deletes
+  S.trash[id] = { ...session, deletedAt: Date.now() };
   delete S.sessions[id];
 
   if (card) {
@@ -748,11 +971,13 @@ async function confirmDelete() {
     setTimeout(() => {
       card.remove();
       document.getElementById('sessions-count').textContent = Object.keys(S.sessions).length || '';
+      const trashBadge = document.getElementById('trash-count');
+      if (trashBadge) trashBadge.textContent = Object.keys(S.trash).length || '';
     }, 200);
   } else {
     render();
   }
-  toast('Session deleted');
+  toast('Moved to Trash');
 }
 
 async function exportSession(id) {
@@ -913,6 +1138,58 @@ async function saveNoteTab(sessionId, groupId, tabId, note) {
   if (!tab || tab.note === note) return;
   tab.note = note;
   await StorageManager.updateSession(sessionId, { groups: session.groups, ungroupedTabs: session.ungroupedTabs });
+}
+
+// ─── Session editing (#5) ────────────────────────────────────────────────────
+async function removeTab(sessionId, groupId, tabId) {
+  const updated = await StorageManager.removeTabFromSession(sessionId, groupId || null, tabId);
+  S.sessions[sessionId] = updated;
+  render();
+  toast('Tab removed');
+}
+
+async function removeGroup(sessionId, groupId) {
+  const updated = await StorageManager.removeGroupFromSession(sessionId, groupId);
+  S.sessions[sessionId] = updated;
+  render();
+  toast('Group removed');
+}
+
+async function addCurrentTab(sessionId) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+    toast('Cannot add this tab', 'error');
+    return;
+  }
+  const tabData = {
+    id: StorageManager.generateId(),
+    url: tab.url,
+    title: tab.title || tab.url,
+    favicon: tab.favIconUrl || '',
+    note: '',
+    tags: [],
+    savedAt: Date.now()
+  };
+  const updated = await StorageManager.addTabToSession(sessionId, tabData);
+  S.sessions[sessionId] = updated;
+  render();
+  toast('Tab added', 'success');
+}
+
+// ─── Trash actions (#6) ───────────────────────────────────────────────────────
+async function restoreFromTrash(id) {
+  const session = await StorageManager.restoreFromTrash(id);
+  S.sessions[session.id] = session;
+  delete S.trash[id];
+  render();
+  toast(`"${session.name}" restored`, 'success');
+}
+
+async function deletePermanent(id) {
+  await StorageManager.deletePermanently(id);
+  delete S.trash[id];
+  render();
+  toast('Permanently deleted');
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────

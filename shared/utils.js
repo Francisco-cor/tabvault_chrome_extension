@@ -31,7 +31,7 @@ export function searchSessions(sessions, query) {
     const matchingTabs = [];
 
     for (const group of (session.groups ?? [])) {
-      maxScore = Math.max(maxScore, fuzzyScore(q, group.name ?? ''));
+      maxScore = Math.max(maxScore, fuzzyScore(q, group.name ?? ''), fuzzyScore(q, group.note ?? ''));
       for (const tag of (group.tags ?? [])) {
         maxScore = Math.max(maxScore, fuzzyScore(q, tag));
       }
@@ -97,15 +97,6 @@ export function truncateUrl(url, maxLen = 48) {
     return short.length > maxLen ? short.slice(0, maxLen) + '…' : short;
   } catch {
     return url.slice(0, maxLen);
-  }
-}
-
-export function getFaviconUrl(url) {
-  try {
-    const origin = new URL(url).origin;
-    return `https://www.google.com/s2/favicons?domain=${origin}&sz=32`;
-  } catch {
-    return '';
   }
 }
 

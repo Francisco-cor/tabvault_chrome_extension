@@ -2,11 +2,12 @@
 // Schema:
 //   chrome.storage.local = {
 //     sessions: { [id]: Session },
+//     trash:    { [id]: Session & { deletedAt: number } },
 //     settings: Settings
 //   }
 //
 // Session = {
-//   id, name, created, updated,
+//   id, name, created, updated, autoSaved?,
 //   groups: Group[],
 //   ungroupedTabs: Tab[],
 //   metadata: { groupCount, tabCount }
@@ -21,7 +22,7 @@ export const StorageManager = {
   _cache: null,
 
   generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+    return crypto.randomUUID();
   },
 
   // ─── Sessions ──────────────────────────────────────────────────────────────
@@ -61,10 +62,105 @@ export const StorageManager = {
     return sessions[id];
   },
 
+  // Soft-delete: moves session to trash with deletedAt timestamp
   async deleteSession(id) {
     const sessions = await this.getSessions();
+    const session = sessions[id];
+    if (!session) return;
     delete sessions[id];
+    const r = await chrome.storage.local.get('trash');
+    const trash = r.trash ?? {};
+    trash[id] = { ...session, deletedAt: Date.now() };
+    await chrome.storage.local.set({ sessions, trash });
+  },
+
+  // ─── Trash ─────────────────────────────────────────────────────────────────
+
+  async getTrash() {
+    const r = await chrome.storage.local.get('trash');
+    return r.trash ?? {};
+  },
+
+  async restoreFromTrash(id) {
+    const r = await chrome.storage.local.get('trash');
+    const trash = r.trash ?? {};
+    const session = trash[id];
+    if (!session) throw new Error('Not in trash');
+    const { deletedAt, ...restored } = session;
+    delete trash[id];
+    const sessions = await this.getSessions();
+    sessions[id] = { ...restored, updated: Date.now() };
+    await chrome.storage.local.set({ sessions, trash });
+    return sessions[id];
+  },
+
+  async deletePermanently(id) {
+    const r = await chrome.storage.local.get('trash');
+    const trash = r.trash ?? {};
+    delete trash[id];
+    await chrome.storage.local.set({ trash });
+  },
+
+  // Auto-purge sessions deleted more than daysOld days ago
+  async purgeOldTrash(daysOld = 30) {
+    const r = await chrome.storage.local.get('trash');
+    const trash = r.trash ?? {};
+    const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
+    let changed = false;
+    for (const [id, session] of Object.entries(trash)) {
+      if (session.deletedAt < cutoff) { delete trash[id]; changed = true; }
+    }
+    if (changed) await chrome.storage.local.set({ trash });
+  },
+
+  // ─── Session editing (#5) ───────────────────────────────────────────────────
+
+  async removeTabFromSession(sessionId, groupId, tabId) {
+    const sessions = await this.getSessions();
+    const session = sessions[sessionId];
+    if (!session) throw new Error('Session not found');
+    if (groupId) {
+      const group = session.groups?.find(g => g.id === groupId);
+      if (group) group.tabs = group.tabs.filter(t => t.id !== tabId);
+      // Remove group if it becomes empty
+      session.groups = (session.groups ?? []).filter(g => g.tabs.length > 0);
+    } else {
+      session.ungroupedTabs = (session.ungroupedTabs ?? []).filter(t => t.id !== tabId);
+    }
+    const tabCount = (session.groups ?? []).reduce((n, g) => n + g.tabs.length, 0) +
+                     (session.ungroupedTabs ?? []).length;
+    session.metadata = { groupCount: (session.groups ?? []).length, tabCount };
+    session.updated = Date.now();
     await chrome.storage.local.set({ sessions });
+    return sessions[sessionId];
+  },
+
+  async removeGroupFromSession(sessionId, groupId) {
+    const sessions = await this.getSessions();
+    const session = sessions[sessionId];
+    if (!session) throw new Error('Session not found');
+    session.groups = (session.groups ?? []).filter(g => g.id !== groupId);
+    const tabCount = session.groups.reduce((n, g) => n + g.tabs.length, 0) +
+                     (session.ungroupedTabs ?? []).length;
+    session.metadata = { groupCount: session.groups.length, tabCount };
+    session.updated = Date.now();
+    await chrome.storage.local.set({ sessions });
+    return sessions[sessionId];
+  },
+
+  async addTabToSession(sessionId, tabData) {
+    const sessions = await this.getSessions();
+    const session = sessions[sessionId];
+    if (!session) throw new Error('Session not found');
+    session.ungroupedTabs = session.ungroupedTabs ?? [];
+    session.ungroupedTabs.push(tabData);
+    session.metadata = {
+      ...session.metadata,
+      tabCount: (session.metadata?.tabCount ?? 0) + 1
+    };
+    session.updated = Date.now();
+    await chrome.storage.local.set({ sessions });
+    return sessions[sessionId];
   },
 
   // ─── Settings ──────────────────────────────────────────────────────────────
@@ -80,12 +176,13 @@ export const StorageManager = {
 
   // ─── Quota (#12) ───────────────────────────────────────────────────────────
 
-  // chrome.storage.local has a ~10 MB limit without the unlimitedStorage permission.
   // Returns usage as an integer percentage (0–100+).
+  // Returns 0 when unlimitedStorage is granted (quota is undefined).
   async getUsagePercent() {
-    const QUOTA_BYTES = 10 * 1024 * 1024; // 10 MB
+    const quota = chrome.storage.local.QUOTA_BYTES;
+    if (!quota) return 0; // unlimitedStorage granted — no cap
     const used = await chrome.storage.local.getBytesInUse(null);
-    return Math.round((used / QUOTA_BYTES) * 100);
+    return Math.round((used / quota) * 100);
   },
 
   // ─── Export / Import ───────────────────────────────────────────────────────

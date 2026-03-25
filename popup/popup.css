@@ -568,6 +568,101 @@ html.panel-mode #btn-side-panel { display: none; }
 
 .detail-tab-content { flex: 1; min-width: 0; }
 
+/* ─── Light theme ───────────────────────────────────────────────────────── */
+html.light {
+  --bg:           #f5f5f7;
+  --surface:      #ffffff;
+  --surface-2:    #ebebee;
+  --surface-3:    #dfdfe4;
+  --border:       rgba(0,0,0,0.07);
+  --border-hover: rgba(0,0,0,0.13);
+  --text:         #1a1a1c;
+  --text-dim:     #636366;
+  --text-muted:   #aeaeb2;
+  --accent-dim:   rgba(65,105,225,0.08);
+  --accent-glow:  rgba(65,105,225,0.14);
+}
+html.light .spinner {
+  border-color: var(--surface-3);
+  border-top-color: var(--accent);
+}
+html.light ::-webkit-scrollbar-thumb { background: var(--surface-3); }
+
+/* ─── Sort bar ──────────────────────────────────────────────────────────── */
+.sort-bar {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px;
+}
+.sort-label {
+  font-size: 10.5px; font-weight: 500;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.sort-select {
+  appearance: none;
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.5'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E") no-repeat right 7px center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 3px 22px 3px 8px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.sort-select:hover { border-color: var(--border-hover); color: var(--text); }
+.sort-select:focus { outline: none; border-color: var(--accent); }
+html.light .sort-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23636366' stroke-width='2.5'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E");
+}
+
+/* ─── Session name row (auto badge) ────────────────────────────────────── */
+.session-name-row {
+  display: flex; align-items: center; gap: 6px;
+}
+
+.auto-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Detail view edits (#5) ────────────────────────────────────────────── */
+.detail-remove-group {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--transition);
+  padding: 2px 5px;
+}
+.detail-group-header:hover .detail-remove-group { opacity: 1; }
+
+.detail-tab-remove {
+  flex-shrink: 0;
+  opacity: 0;
+  margin-top: 1px;
+  padding: 2px 4px;
+  transition: opacity var(--transition);
+}
+.detail-tab:hover .detail-tab-remove { opacity: 1; }
+
+.detail-add-tab {
+  width: 100%;
+  margin-bottom: 10px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+/* ─── Trash view (#6) ───────────────────────────────────────────────────── */
+.trash-card { opacity: 0.85; }
+.trash-card:hover { opacity: 1; }
+
 /* ─── Misc ──────────────────────────────────────────────────────────────── */
 [hidden] { display: none !important; }
 .divider { height: 1px; background: var(--border); margin: 8px 0; }
