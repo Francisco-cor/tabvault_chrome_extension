@@ -27,6 +27,9 @@
         <svg id="theme-icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg id="theme-icon-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
+      <button id="btn-settings" class="icon-btn" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
       <button id="btn-import" class="icon-btn" title="Import backup">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
@@ -61,6 +64,26 @@
     </button>
   </nav>
 
+  <!-- Bulk action bar (hidden by default) -->
+  <div class="bulk-bar" id="bulk-bar" hidden>
+    <span class="bulk-count" id="bulk-count">0 selected</span>
+    <div class="bulk-actions">
+      <button class="btn-ghost" id="bulk-merge" title="Merge selected">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        Merge
+      </button>
+      <button class="btn-ghost" id="bulk-export" title="Export selected">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Export
+      </button>
+      <button class="btn-ghost btn-danger" id="bulk-delete" title="Delete selected">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Delete
+      </button>
+      <button class="btn-ghost" id="bulk-cancel">Cancel</button>
+    </div>
+  </div>
+
   <!-- Content -->
   <main class="content" id="content">
     <!-- Rendered by popup.js -->
@@ -79,16 +102,36 @@
     </div>
   </div>
 
-  <!-- Delete Confirm Modal -->
+  <!-- Permanent Delete Confirm Modal -->
   <div class="modal-overlay" id="delete-modal" hidden>
     <div class="modal">
-      <h3 class="modal-title">Delete Session</h3>
+      <h3 class="modal-title" id="delete-modal-title">Delete Session</h3>
       <p id="delete-modal-desc" class="modal-desc"></p>
       <div class="modal-actions">
         <button class="btn-secondary" id="delete-cancel">Cancel</button>
         <button class="btn-primary btn-danger-primary" id="delete-confirm">Delete</button>
       </div>
     </div>
+  </div>
+
+  <!-- Merge Modal -->
+  <div class="modal-overlay" id="merge-modal" hidden>
+    <div class="modal">
+      <h3 class="modal-title">Merge Sessions</h3>
+      <p class="modal-desc" id="merge-desc">Combine selected sessions into one.</p>
+      <input id="merge-name-input" class="modal-input" type="text" placeholder="Merged session name…" maxlength="80">
+      <div class="modal-actions">
+        <button class="btn-secondary" id="merge-cancel">Cancel</button>
+        <button class="btn-primary" id="merge-confirm">Merge</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Undo Toast -->
+  <div class="undo-toast" id="undo-toast" hidden>
+    <span id="undo-toast-msg"></span>
+    <button class="undo-btn" id="undo-btn">Undo</button>
+    <div class="undo-progress" id="undo-progress"></div>
   </div>
 
   <!-- Toast -->

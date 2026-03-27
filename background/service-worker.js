@@ -1,9 +1,11 @@
 // TabVault Service Worker (MV3)
-// Minimal — all heavy logic lives in the popup context.
-// Service worker handles: capturing + restoring sessions on demand.
+// Handles: capturing + restoring sessions, auto-save on window close,
+// periodic auto-save via chrome.alarms.
 
 import { StorageManager } from '../shared/storage.js';
 import { VALID_COLORS } from '../shared/utils.js';
+
+const ALARM_NAME = 'tabvault-autosave';
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
@@ -17,6 +19,8 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Open TabVault',
     contexts: ['page', 'frame']
   });
+  // Initialize auto-save alarm from settings
+  initAutoSaveAlarm();
 });
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
@@ -29,20 +33,83 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       setTimeout(() => chrome.action.setBadgeText({ text: '' }), 3000);
     }
   }
-  // 'open-tabvault' opens the popup; handled natively by _execute_action shortcut
-  // but context menu can't open popup directly — open side panel as fallback
   if (info.menuItemId === 'open-tabvault') {
-    chrome.action.openPopup().catch(() => {
-      // openPopup may fail in some Chrome versions; silently ignore
-    });
+    chrome.action.openPopup().catch(() => {});
   }
 });
 
-// ─── Auto-save cache (#4) ─────────────────────────────────────────────────────
-// Tracks open windows and their tabs so we can auto-save on window close.
-// Service workers are ephemeral; this cache is rebuilt on startup and kept
-// in sync via tab events. Using an in-memory Map (not storage.session) for
-// simplicity — the cache is rebuilt from chrome.windows.getAll on SW startup.
+// ─── Auto-save alarm (periodic) ──────────────────────────────────────────────
+async function initAutoSaveAlarm() {
+  const settings = await StorageManager.getSettings();
+  const minutes = settings.autoSaveMinutes ?? 0;
+  // Clear any existing alarm
+  await chrome.alarms.clear(ALARM_NAME);
+  if (minutes > 0) {
+    chrome.alarms.create(ALARM_NAME, { periodInMinutes: minutes });
+  }
+}
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== ALARM_NAME) return;
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    for (const win of windows) {
+      const validTabs = (win.tabs ?? []).filter(t =>
+        t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://')
+      );
+      if (validTabs.length < 2) continue;
+
+      const dateStr = formatSessionDate();
+
+      const tabObjects = await Promise.all(validTabs.map(async tab => ({
+        id: StorageManager.generateId(),
+        url: tab.url,
+        title: tab.title || tab.url,
+        favicon: await faviconToDataUrl(tab.favIconUrl),
+        note: '',
+        tags: [],
+        savedAt: Date.now()
+      })));
+
+      const session = {
+        id: StorageManager.generateId(),
+        name: `Periodic: ${dateStr}`,
+        created: Date.now(),
+        updated: Date.now(),
+        groups: [],
+        ungroupedTabs: tabObjects,
+        autoSaved: true,
+        metadata: { groupCount: 0, tabCount: tabObjects.length }
+      };
+
+      await StorageManager.saveSession(session);
+    }
+
+    chrome.action.setBadgeText({ text: 'AUTO' });
+    chrome.action.setBadgeBackgroundColor({ color: '#4169E1' });
+    setTimeout(() => chrome.action.setBadgeText({ text: '' }), 3000);
+  } catch (e) {
+    console.error('[TabVault] Periodic auto-save failed:', e);
+  }
+});
+
+// Listen for settings changes to update the alarm
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.settings) {
+    const newSettings = changes.settings.newValue ?? {};
+    const oldMinutes = changes.settings.oldValue?.autoSaveMinutes ?? 0;
+    const newMinutes = newSettings.autoSaveMinutes ?? 0;
+    if (newMinutes !== oldMinutes) {
+      chrome.alarms.clear(ALARM_NAME).then(() => {
+        if (newMinutes > 0) {
+          chrome.alarms.create(ALARM_NAME, { periodInMinutes: newMinutes });
+        }
+      });
+    }
+  }
+});
+
+// ─── Window close auto-save cache ────────────────────────────────────────────
 const windowTabCache = new Map();
 
 async function initWindowCache() {
@@ -62,7 +129,7 @@ chrome.tabs.onCreated.addListener(tab => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId, info) => {
-  if (info.isWindowClosing) return; // handled by windows.onRemoved
+  if (info.isWindowClosing) return;
   const arr = windowTabCache.get(info.windowId) ?? [];
   windowTabCache.set(info.windowId, arr.filter(t => t.id !== tabId));
 });
@@ -75,7 +142,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   else arr.push(tab);
 });
 
-// Auto-save when a window closes (#4)
 chrome.windows.onRemoved.addListener(async windowId => {
   const tabs = windowTabCache.get(windowId) ?? [];
   windowTabCache.delete(windowId);
@@ -85,9 +151,7 @@ chrome.windows.onRemoved.addListener(async windowId => {
   );
   if (validTabs.length < 2) return;
 
-  const dateStr = new Date().toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
+  const dateStr = formatSessionDate();
 
   const tabObjects = await Promise.all(validTabs.map(async tab => ({
     id: StorageManager.generateId(),
@@ -117,7 +181,7 @@ chrome.windows.onRemoved.addListener(async windowId => {
   setTimeout(() => chrome.action.setBadgeText({ text: '' }), 5000);
 });
 
-// ─── Keyboard shortcuts (#3) ──────────────────────────────────────────────────
+// ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 chrome.commands.onCommand.addListener(async command => {
   if (command === 'save-session') {
     const name = `Session — ${new Date().toLocaleDateString()}`;
@@ -139,12 +203,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
     case 'RESTORE_SESSION':
       restoreSession(msg.sessionId, msg.windowId ?? null).then(respond);
       return true;
+    case 'REFRESH_ALARM':
+      initAutoSaveAlarm().then(() => respond({ ok: true }));
+      return true;
+    case 'CONVERT_FAVICON':
+      faviconToDataUrl(msg.url).then(dataUrl => respond({ dataUrl }));
+      return true;
   }
 });
 
-// ─── Favicon helper (#2) ──────────────────────────────────────────────────────
-// Converts a favicon URL to a data URL so it persists after the tab closes.
-// Service workers have no canvas/Image; we use fetch + ArrayBuffer + btoa.
+// ─── Date formatter (avoids toLocaleString locale variance in service workers) ─
+function formatSessionDate() {
+  const d = new Date();
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${months[d.getMonth()]} ${d.getDate()}, ${h12}:${m} ${ampm}`;
+}
+
+// ─── Favicon helper ──────────────────────────────────────────────────────────
 async function faviconToDataUrl(url) {
   if (!url) return '';
   if (url.startsWith('data:')) return url;
@@ -156,6 +235,8 @@ async function faviconToDataUrl(url) {
     clearTimeout(timer);
     if (!resp.ok) return '';
     const buffer = await resp.arrayBuffer();
+    // Limit favicon size to 32KB to prevent storage bloat
+    if (buffer.byteLength > 32768) return '';
     const bytes = new Uint8Array(buffer);
     let binary = '';
     for (let i = 0; i < bytes.byteLength; i++) {
@@ -163,7 +244,8 @@ async function faviconToDataUrl(url) {
     }
     const type = resp.headers.get('content-type') || 'image/png';
     return `data:${type};base64,${btoa(binary)}`;
-  } catch {
+  } catch (e) {
+    console.warn('[TabVault] favicon fetch failed:', url, e?.message);
     return '';
   }
 }
@@ -189,7 +271,6 @@ async function captureCurrentWindow(name) {
       });
     }
 
-    // Fetch favicons in parallel (#2)
     const tabPromises = [];
     for (const tab of tabs) {
       if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue;
@@ -256,23 +337,19 @@ async function restoreSession(sessionId, targetWindowId = null) {
     let firstConsumed;
 
     if (targetWindowId) {
-      // feat #6: restore into existing window — no tab is pre-created
       winId = targetWindowId;
       firstConsumed = true;
     } else {
-      // default: open a new window, first URL is consumed by window creation
       const newWin = await chrome.windows.create({ url: allUrls[0] });
       winId = newWin.id;
       firstConsumed = false;
     }
 
-    // Create ungrouped tabs
     for (let i = 0; i < ungrouped.length; i++) {
       if (i === 0 && !firstConsumed) { firstConsumed = true; continue; }
       await chrome.tabs.create({ windowId: winId, url: ungrouped[i].url });
     }
 
-    // Create grouped tabs
     for (const group of groups) {
       const tabIds = [];
       for (let i = 0; i < group.validTabs.length; i++) {
