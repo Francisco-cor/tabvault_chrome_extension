@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>New Tab — TabVault</title>
+    <link rel="stylesheet" href="../styles/tokens.css" />
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/components.css" />
+    <link rel="stylesheet" href="../styles/views.css" />
+    <style>
+      body.newtab {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 32px 24px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .newtab-clock {
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 16px 0 4px;
+      }
+      .newtab-date {
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 24px;
+      }
+      .newtab-grid {
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        gap: 16px;
+      }
+      @media (max-width: 700px) {
+        .newtab-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .newtab-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .newtab-card h3 {
+        font-size: 13px;
+        margin: 0 0 8px;
+      }
+      .newtab-search {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .newtab-session {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .newtab-session:last-child {
+        border-bottom: none;
+      }
+    </style>
+  </head>
+  <body class="newtab">
+    <div id="newtab-clock" class="newtab-clock">--:--</div>
+    <div id="newtab-date" class="newtab-date">Loading…</div>
+
+    <div id="newtab-disabled" hidden>
+      <div class="newtab-card">
+        <h3>TabVault new tab is off</h3>
+        <p class="text-muted" style="font-size: 12px">Enable it in TabVault → Settings → New tab (opt-in).</p>
+        <button class="btn-secondary" id="open-settings">Open TabVault</button>
+      </div>
+    </div>
+
+    <div id="newtab-enabled" hidden>
+      <div class="newtab-grid">
+        <div class="newtab-card">
+          <h3>Recent sessions</h3>
+          <input
+            id="newtab-search"
+            class="newtab-search"
+            placeholder="Search vault…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div id="newtab-sessions" style="margin-top: 10px"></div>
+        </div>
+        <div class="newtab-card">
+          <h3>Routines</h3>
+          <div id="newtab-routines" class="text-muted" style="font-size: 12px">No routines</div>
+          <h3 style="margin-top: 16px">Quick actions</h3>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px">
+            <button class="btn-secondary" id="nt-save">Save current session</button>
+            <button class="btn-ghost" id="nt-open-vault">Open TabVault</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./newtab.js"></script>
+  </body>
+</html>

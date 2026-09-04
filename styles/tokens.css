@@ -1,0 +1,141 @@
+/* ─── TabVault Design Tokens (Fase 5.1) ──────────────────────────────────────
+   Única fuente de verdad visual. Temas vía [data-theme] en <html> y acentos vía
+   [data-accent]. Contraste AA verificado (WCAG 2.1): texto ≥4.5:1 sobre sus
+   superficies. Los tonos translúcidos derivan de los tokens sólidos con
+   color-mix() para que temas y acentos nunca se desincronicen. */
+
+:root {
+  /* ── Espaciado (escala 4px) ── */
+  --sp-05: 2px;
+  --sp-1: 4px;
+  --sp-15: 6px;
+  --sp-2: 8px;
+  --sp-25: 10px;
+  --sp-3: 12px;
+  --sp-35: 14px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-11: 44px;
+
+  /* ── Tipografía (escala modular ~1.15) ── */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 10.5px;
+  --text-base: 11.5px;
+  --text-md: 12.5px;
+  --text-lg: 14px;
+
+  /* ── Radios ── */
+  --radius-sm: 5px;
+  --radius: 7px;
+  --radius-lg: 11px;
+
+  /* ── Sombras ── */
+  --shadow-menu: 0 8px 24px var(--overlay-strong);
+  --shadow-modal: 0 24px 64px var(--overlay-strong), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --shadow-toast: 0 8px 24px var(--overlay-strong);
+
+  /* ── Z-index ── */
+  --z-nav: 10;
+  --z-menu: 50;
+  --z-modal: 100;
+  --z-toast: 200;
+
+  /* ── Movimiento ── */
+  --transition: 0.12s ease;
+
+  /* ── Tema oscuro (default) ── */
+  --bg: #0f0f10;
+  --surface: #161618;
+  --surface-2: #1d1d20;
+  --surface-3: #242428;
+  --surface-raised: #18181b;
+  --border: rgba(255, 255, 255, 0.055);
+  --border-hover: rgba(255, 255, 255, 0.1);
+  --overlay: rgba(0, 0, 0, 0.65);
+  --overlay-strong: rgba(0, 0, 0, 0.5);
+
+  --text: #f0eff4;
+  --text-dim: #a1a1aa; /* 7.9:1 sobre surface */
+  --text-muted: #8b8a93; /* 4.9:1 sobre surface-2 (axe-core verificado, Fase 10) */
+
+  /* ── Semánticos ── */
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #38bdf8;
+  --on-accent: #ffffff;
+
+  /* ── Acento default (blue) ── */
+  --accent: #3b64d9; /* blanco encima ≥4.6:1 */
+  --accent-hover: #4c74e8;
+
+  /* Derivados del acento: siempre coherentes en cualquier tema/acento */
+  --accent-dim: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);
+  --accent-border-strong: color-mix(in srgb, var(--accent) 45%, transparent);
+
+  --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent);
+  --danger-border: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+/* ── Tema claro ── */
+html[data-theme='light'] {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #ebebee;
+  --surface-3: #dfdfe4;
+  --surface-raised: #fafafa;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-hover: rgba(0, 0, 0, 0.13);
+  --overlay: rgba(0, 0, 0, 0.45);
+  --overlay-strong: rgba(0, 0, 0, 0.35);
+
+  --text: #1a1a1c;
+  --text-dim: #52525b; /* 7.5:1 sobre white */
+  --text-muted: #67676f; /* 4.7:1 sobre surface-2 claro (axe-core verificado, Fase 10) */
+
+  --success: #15803d;
+  --danger: #dc2626;
+  --warning: #b45309;
+  --info: #0369a1;
+}
+
+/* ── Acentos (data-accent en <html>) ──
+   Todos con texto blanco ≥4.5:1 encima. */
+html[data-accent='purple'] {
+  --accent: #7437e0;
+  --accent-hover: #8349ea;
+}
+html[data-accent='green'] {
+  --accent: #047857;
+  --accent-hover: #0a8a67;
+}
+html[data-accent='orange'] {
+  --accent: #c2410c;
+  --accent-hover: #d14e17;
+}
+
+/* ── Accesibilidad: foco visible consistente (5.2) ── */
+:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Accesibilidad: prefers-reduced-motion (5.2) ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-typecheck-test:
+    name: Lint · Typecheck · Unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: ESLint (errores fallan; warnings visibles)
+        run: npm run lint
+
+      - name: TypeScript checkJs (shared + tests)
+        run: npm run typecheck
+
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: Unit tests (Vitest)
+        run: npm test
+
+      - name: Cobertura (umbrales 70% global / 90% core)
+        run: npm run test:coverage
+
+      - name: Publicar reporte de cobertura como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+  e2e:
+    name: E2E humo (extensión real)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright E2E
+        env:
+          CI: 'true'
+        run: npm run test:e2e
+
+      - name: Subir reporte en fallo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  pack:
+    name: Empaquetado store-ready
+    runs-on: ubuntu-latest
+    needs: [lint-typecheck-test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generar iconos y zip
+        run: |
+          npm run icons
+          npm run zip
+
+      - name: Verificar zip + presupuesto de bundle (≤250KB)
+        run: node scripts-dev/check-zip.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabvault-store-zip
+          path: tabvault-v*.zip

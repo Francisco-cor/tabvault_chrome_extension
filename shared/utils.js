@@ -1,78 +1,21 @@
-// shared/utils.js — Search, formatting, and helpers
+// shared/utils.js — Formatting, colors, and helpers
+/** @typedef {import('./types.js').Session} Session */
+/** @typedef {import('./types.js').SessionMap} SessionMap */
+/** @typedef {import('./types.js').TabItem} TabItem */
 
-// ─── Fuzzy search ──────────────────────────────────────────────────────────
-
-function fuzzyScore(needle, haystack) {
-  if (!needle || !haystack) return 0;
-  const n = needle.toLowerCase();
-  const h = haystack.toLowerCase();
-  if (h === n) return 100;
-  if (h.startsWith(n)) return 80;
-  if (h.includes(n)) return 60;
-  // Character-by-character fuzzy
-  let hi = 0;
-  for (let ni = 0; ni < n.length; ni++) {
-    const found = h.indexOf(n[ni], hi);
-    if (found === -1) return 0;
-    hi = found + 1;
-  }
-  return 30;
-}
-
-export function searchSessions(sessions, query) {
-  if (!query?.trim()) {
-    return Object.values(sessions).sort((a, b) => b.updated - a.updated);
-  }
-  const q = query.trim();
-  const results = [];
-
-  for (const session of Object.values(sessions)) {
-    let maxScore = fuzzyScore(q, session.name);
-    const matchingTabs = [];
-
-    for (const group of (session.groups ?? [])) {
-      maxScore = Math.max(maxScore, fuzzyScore(q, group.name ?? ''), fuzzyScore(q, group.note ?? ''));
-      for (const tag of (group.tags ?? [])) {
-        maxScore = Math.max(maxScore, fuzzyScore(q, tag));
-      }
-      for (const tab of (group.tabs ?? [])) {
-        const score = Math.max(
-          fuzzyScore(q, tab.title ?? ''),
-          fuzzyScore(q, tab.url ?? ''),
-          fuzzyScore(q, tab.note ?? ''),
-          ...(tab.tags ?? []).map(t => fuzzyScore(q, t))
-        );
-        if (score > 0) {
-          matchingTabs.push({ ...tab, _score: score, _groupName: group.name });
-          maxScore = Math.max(maxScore, score);
-        }
-      }
-    }
-
-    for (const tab of (session.ungroupedTabs ?? [])) {
-      const score = Math.max(
-        fuzzyScore(q, tab.title ?? ''),
-        fuzzyScore(q, tab.url ?? ''),
-        fuzzyScore(q, tab.note ?? '')
-      );
-      if (score > 0) {
-        matchingTabs.push({ ...tab, _score: score, _groupName: 'Ungrouped' });
-        maxScore = Math.max(maxScore, score);
-      }
-    }
-
-    if (maxScore > 0) {
-      results.push({ ...session, _score: maxScore, _matchingTabs: matchingTabs });
-    }
-  }
-
-  return results.sort((a, b) => b._score - a._score);
-}
+// El motor de búsqueda vive desde Fase 7 en core/searchIndex.js
+// (índice invertido + ranking); searchSessions fue eliminado junto con su
+// warning heredado de complejidad.
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
 
-export function formatRelativeTime(ts) {
-  const diff = Date.now() - ts;
+/**
+ * @param {number} ts epoch ms
+ * @param {number} [now] reloj inyectable (tick de 60s de la UI); default Date.now()
+ * @returns {string}
+ */
+export function formatRelativeTime(ts, now = Date.now()) {
+  const diff = now - ts;
   const m = Math.floor(diff / 60000);
   const h = Math.floor(m / 60);
   const d = Math.floor(h / 24);
@@ -83,13 +26,21 @@ export function formatRelativeTime(ts) {
   return 'just now';
 }
 
+/** @param {number} ts epoch ms */
 export function formatDate(ts) {
   return new Date(ts).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
+/**
+ * @param {string} url
+ * @param {number} [maxLen=48]
+ */
 export function truncateUrl(url, maxLen = 48) {
   try {
     const u = new URL(url);
@@ -103,42 +54,71 @@ export function truncateUrl(url, maxLen = 48) {
 // ─── Chrome group color map ──────────────────────────────────────────────────
 
 export const GROUP_COLORS = {
-  grey:   '#5f6368',
-  blue:   '#1a73e8',
-  red:    '#d93025',
+  grey: '#5f6368',
+  blue: '#1a73e8',
+  red: '#d93025',
   yellow: '#f29900',
-  green:  '#188038',
-  pink:   '#d01884',
+  green: '#188038',
+  pink: '#d01884',
   purple: '#a142f4',
-  cyan:   '#007b83',
-  orange: '#fa903e'
+  cyan: '#007b83',
+  orange: '#fa903e',
 };
 
 export const VALID_COLORS = Object.keys(GROUP_COLORS);
 
+/** @param {string} color clave de GROUP_COLORS */
 export function groupColorHex(color) {
-  return GROUP_COLORS[color] ?? GROUP_COLORS.purple;
+  return /** @type {{ [k: string]: string }} */ (GROUP_COLORS)[color] ?? GROUP_COLORS.purple;
 }
 
 // ─── Download helpers ────────────────────────────────────────────────────────
 
+/** @param {string} content @param {string} filename */
 export function downloadText(content, filename) {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  downloadBytes(new TextEncoder().encode(content), filename, 'text/plain;charset=utf-8');
+}
+
+/**
+ * Descarga bytes binarios (respaldos .tabvault.enc, Fase 8.2).
+ * @param {Uint8Array|ArrayBuffer} content
+ * @param {string} filename
+ * @param {string} [mime]
+ */
+export function downloadBytes(content, filename, mime = 'application/octet-stream') {
+  const blob = new Blob([/** @type {any} */ (content)], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
+  a.href = url;
+  a.download = filename;
+  a.click();
   URL.revokeObjectURL(url);
 }
 
+/** @param {File} file @returns {Promise<string>} */
 export function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
+    reader.onload = (e) => resolve(/** @type {string} */ (e.target?.result));
     reader.onerror = reject;
     reader.readAsText(file);
   });
 }
 
+/**
+ * Lee un archivo como ArrayBuffer (detección .enc por magic bytes).
+ * @param {File} file @returns {Promise<ArrayBuffer>}
+ */
+export function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(/** @type {ArrayBuffer} */ (e.target?.result));
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/** @param {string} name */
 export function sanitizeName(name) {
   return name.trim().replace(/[/\\?%*:|"<>]/g, '-') || 'tabvault-export';
 }

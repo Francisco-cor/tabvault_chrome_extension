@@ -1,0 +1,93 @@
+/* ─── TabVault Base (Fase 5.1) ───────────────────────────────────────────────
+   Reset, lienzo de las dos superficies (popup / side panel) y utilidades. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Superficie popup: dimensiones fijas de Chrome */
+html,
+body {
+  width: 420px;
+  height: 560px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Superficie side panel: fluida, sin anchos fijos (Fase 5.3) */
+html[data-surface='panel'],
+html[data-surface='panel'] body {
+  width: 100%;
+  height: 100vh;
+  min-width: 320px;
+}
+/* Densidad compacta del panel */
+html[data-surface='panel'] body {
+  font-size: calc(var(--text-base) - 0.5px);
+}
+
+/* ─── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ─── Utilidades ── */
+[hidden] {
+  display: none !important;
+}
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--sp-2) 0;
+}
+.color-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.text-dim {
+  color: var(--text-dim);
+}
+.text-muted {
+  color: var(--text-muted);
+}
+.no-select {
+  user-select: none;
+}
+
+/* Hints de teclado (overlay de atajos, settings) */
+.kbd-hint {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 var(--sp-1);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}

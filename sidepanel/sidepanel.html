@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en" data-surface="panel">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TabVault</title>
+    <link rel="stylesheet" href="../styles/tokens.css" />
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/components.css" />
+    <link rel="stylesheet" href="../styles/views.css" />
+  </head>
+  <body>
+    <!-- Header compacto: sin botón de abrir side panel (ya estamos dentro) -->
+    <header class="header">
+      <div class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="2" y="3" width="20" height="18" rx="3" fill="#4169E1" />
+          <circle cx="12" cy="12" r="4" fill="#0d0d14" stroke="#e2e0f0" stroke-width="1.5" />
+          <circle cx="12" cy="12" r="1.5" fill="#4169E1" />
+          <circle cx="6" cy="7" r="1.2" fill="rgba(226,224,240,0.5)" />
+          <circle cx="18" cy="7" r="1.2" fill="rgba(226,224,240,0.5)" />
+          <circle cx="6" cy="17" r="1.2" fill="rgba(226,224,240,0.5)" />
+          <circle cx="18" cy="17" r="1.2" fill="rgba(226,224,240,0.5)" />
+        </svg>
+        <span class="logo-text">TabVault</span>
+      </div>
+      <div class="header-actions">
+        <select
+          id="workspace-select"
+          class="select workspace-select"
+          aria-label="Filter by workspace"
+          hidden
+        ></select>
+        <button id="btn-theme" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
+          <svg
+            id="theme-icon-dark"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <svg
+            id="theme-icon-light"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            style="display: none"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg>
+        </button>
+        <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <use href="#tv-settings" />
+          </svg>
+        </button>
+        <button id="btn-import" class="icon-btn" title="Import backup" aria-label="Import backup">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <use href="#tv-download" />
+          </svg>
+        </button>
+        <button id="btn-export-all" class="icon-btn" title="Export all data" aria-label="Export all data">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <use href="#tv-upload" />
+          </svg>
+        </button>
+        <button id="btn-help" class="icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <use href="#tv-keyboard" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Nav -->
+    <nav class="nav-tabs" role="tablist" aria-label="Sections">
+      <button class="nav-tab active" role="tab" aria-selected="true" data-view="sessions">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          aria-hidden="true"
+        >
+          <use href="#tv-grid" />
+        </svg>
+        Sessions
+        <span class="nav-badge" id="sessions-count" aria-hidden="true"></span>
+      </button>
+      <button class="nav-tab" role="tab" aria-selected="false" data-view="groups">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          aria-hidden="true"
+        >
+          <use href="#tv-list" />
+        </svg>
+        Live Groups
+      </button>
+      <button class="nav-tab" role="tab" aria-selected="false" data-view="search">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          aria-hidden="true"
+        >
+          <use href="#tv-search" />
+        </svg>
+        Search
+      </button>
+      <button class="nav-tab" role="tab" aria-selected="false" data-view="trash">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          aria-hidden="true"
+        >
+          <use href="#tv-trash" />
+        </svg>
+        Trash
+        <span class="nav-badge" id="trash-count" aria-hidden="true"></span>
+      </button>
+      <button class="nav-tab" role="tab" aria-selected="false" data-view="stats">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          aria-hidden="true"
+        >
+          <use href="#tv-barChart" />
+        </svg>
+        Stats
+      </button>
+    </nav>
+
+    <!-- Bulk action bar (hidden by default) -->
+    <div class="bulk-bar" id="bulk-bar" hidden>
+      <span class="bulk-count" id="bulk-count" role="status">0 selected</span>
+      <div class="bulk-actions">
+        <button class="btn-ghost" id="bulk-merge" title="Merge selected">
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            aria-hidden="true"
+          >
+            <use href="#tv-merge" />
+          </svg>
+          Merge
+        </button>
+        <button class="btn-ghost" id="bulk-export" title="Export selected">
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            aria-hidden="true"
+          >
+            <use href="#tv-upload" />
+          </svg>
+          Export
+        </button>
+        <button class="btn-ghost btn-danger" id="bulk-delete" title="Delete selected">
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            aria-hidden="true"
+          >
+            <use href="#tv-trash" />
+          </svg>
+          Delete
+        </button>
+        <button class="btn-ghost" id="bulk-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <main class="content" id="content">
+      <!-- Rendered by ui/render.js -->
+    </main>
+
+    <!-- Save Session Modal (Fase 6: captura selectiva + duplicados v2) -->
+    <div
+      class="modal-overlay"
+      id="save-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="save-modal-title"
+      hidden
+    >
+      <div class="modal">
+        <h3 class="modal-title" id="save-modal-title">Save Session</h3>
+        <input
+          id="session-name-input"
+          class="modal-input"
+          type="text"
+          placeholder="Session name…"
+          maxlength="80"
+          aria-label="Session name"
+        />
+
+        <!-- Preview de captura selectiva (6.1) -->
+        <div class="save-preview">
+          <div class="save-preview-header">
+            <span>Capture</span>
+            <span id="save-tabs-count" class="text-muted"></span>
+          </div>
+          <div
+            class="save-tabs-preview"
+            id="save-tabs-preview"
+            role="group"
+            aria-label="Tabs to capture"
+          ></div>
+        </div>
+        <label class="save-option">
+          <input type="checkbox" id="save-all-windows" />
+          Include all browser windows in this session
+        </label>
+
+        <!-- Comparación lado a lado (duplicados v2, 6.4) -->
+        <div class="duplicate-compare" id="duplicate-compare" role="alert" hidden>
+          <div class="dup-columns">
+            <div class="dup-column">
+              <div class="dup-label">This capture</div>
+              <div class="dup-meta" id="dup-incoming"></div>
+            </div>
+            <div class="dup-column">
+              <div class="dup-label">Similar saved session</div>
+              <div class="dup-meta" id="dup-existing"></div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="dup-cancel">Cancel</button>
+            <button class="btn-secondary" id="dup-save-anyway">Save anyway</button>
+            <button class="btn-primary btn-danger-primary" id="dup-overwrite">Overwrite it</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-secondary" id="modal-cancel">Cancel</button>
+          <button class="btn-primary" id="modal-confirm">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Permanent Delete Confirm Modal -->
+    <div
+      class="modal-overlay"
+      id="delete-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-modal-title"
+      hidden
+    >
+      <div class="modal">
+        <h3 class="modal-title" id="delete-modal-title">Delete Session</h3>
+        <p id="delete-modal-desc" class="modal-desc"></p>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="delete-cancel">Cancel</button>
+          <button class="btn-primary btn-danger-primary" id="delete-confirm">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Merge Modal -->
+    <div
+      class="modal-overlay"
+      id="merge-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="merge-modal-title"
+      hidden
+    >
+      <div class="modal">
+        <h3 class="modal-title" id="merge-modal-title">Merge Sessions</h3>
+        <p class="modal-desc" id="merge-desc">Combine selected sessions into one.</p>
+        <input
+          id="merge-name-input"
+          class="modal-input"
+          type="text"
+          placeholder="Merged session name…"
+          maxlength="80"
+          aria-label="Merged session name"
+        />
+        <div class="modal-actions">
+          <button class="btn-secondary" id="merge-cancel">Cancel</button>
+          <button class="btn-primary" id="merge-confirm">Merge</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Restore Confirm Modal (Shift+R — M12) -->
+    <div
+      class="modal-overlay"
+      id="restore-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="restore-modal-title"
+      hidden
+    >
+      <div class="modal">
+        <h3 class="modal-title" id="restore-modal-title">Restore Session</h3>
+        <p class="modal-desc" id="restore-modal-desc"></p>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="restore-cancel">Cancel</button>
+          <button class="btn-primary" id="restore-confirm">Restore</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Preview Modal (Fase 8: plan de merge + avisos) -->
+    <div
+      class="modal-overlay"
+      id="import-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="import-modal-title"
+      hidden
+    >
+      <div class="modal">
+        <h3 class="modal-title" id="import-modal-title">Import sessions</h3>
+        <div id="import-modal-body"><!-- dynamic (ui/actions/vaultActions.js) --></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="import-cancel">Cancel</button>
+          <button class="btn-primary" id="import-confirm">Merge</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Passphrase Modal (Fase 8.2: cifrar/descifrar respaldos) -->
+    <div
+      class="modal-overlay"
+      id="passphrase-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="passphrase-modal-title"
+      hidden
+    >
+      <div class="modal">
+        <h3 class="modal-title" id="passphrase-modal-title">Passphrase</h3>
+        <p class="modal-desc" id="passphrase-desc"></p>
+        <input
+          id="passphrase-input"
+          class="modal-input"
+          type="password"
+          autocomplete="off"
+          maxlength="1024"
+          aria-label="Passphrase"
+        />
+        <p class="modal-desc passphrase-error" id="passphrase-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="passphrase-cancel">Cancel</button>
+          <button class="btn-primary" id="passphrase-ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Undo Toast -->
+    <div class="undo-toast" id="undo-toast" role="status" aria-live="polite" hidden>
+      <span id="undo-toast-msg"></span>
+      <button class="undo-btn" id="undo-btn">Undo</button>
+      <div class="undo-progress" id="undo-progress"></div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <!-- Hidden file input for import (multi-formato, Fase 8) -->
+    <input type="file" id="import-file" accept=".json,.tabvault,.txt,.html,.htm,.enc" style="display: none" />
+
+    <script type="module" src="../ui/main.js"></script>
+  </body>
+</html>

@@ -24,3 +24,11 @@ build/
 # Environment
 .env
 .env.local
+
+# Test artifacts
+test-results/
+playwright-report/
+coverage/
+
+# Husky internal state
+.husky/_/
